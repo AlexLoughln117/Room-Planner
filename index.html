@@ -648,34 +648,60 @@
       html += '</div>';
 
       // Selected items gallery
-      const allSelected = [];
-      for (const slot of room.furnitureSlots) {
-        for (const opt of getSelectedOptions(slot)) {
-          allSelected.push({ slot, opt });
-        }
-      }
-      if (allSelected.length > 0) {
+      const slotsWithSelections = room.furnitureSlots.filter(s => getSelectedOptions(s).length > 0);
+      if (slotsWithSelections.length > 0) {
         html += '<div class="flex items-center justify-between mb-3">';
         html += '<h2 class="text-sm font-semibold text-warm-700 uppercase tracking-wider">Selected Items</h2>';
         html += `<button onclick="document.getElementById('gallery-${room.id}').classList.toggle('hidden')" class="text-xs text-warm-500 hover:text-warm-700 transition">Show / Hide</button>`;
         html += '</div>';
         html += `<div id="gallery-${room.id}" class="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">`;
-        for (const { slot, opt } of allSelected) {
+        for (const slot of slotsWithSelections) {
+          const selectedOpts = getSelectedOptions(slot);
           const qty = slot.quantity || 1;
-          html += `<a href="#/room/${room.id}/slot/${slot.id}" class="bg-white rounded-2xl border border-warm-200 overflow-hidden hover:shadow-md hover:border-warm-300 transition group">`;
-          if (opt.imageUrl) {
-            html += `<img src="${esc(opt.imageUrl)}" alt="" class="w-full aspect-square object-cover bg-warm-100" onerror="this.classList.add('hidden')">`;
+
+          if (slot.multiSelect && selectedOpts.length > 1) {
+            // Multi-select: grouped card spanning full width
+            html += `<a href="#/room/${room.id}/slot/${slot.id}" class="col-span-2 sm:col-span-3 bg-white rounded-2xl border border-warm-200 overflow-hidden hover:shadow-md hover:border-warm-300 transition group">`;
+            html += `<div class="p-3 border-b border-warm-100 flex items-center justify-between">`;
+            html += `<p class="text-sm font-semibold text-warm-800">${esc(slot.name)}</p>`;
+            let slotTotal = 0;
+            for (const o of selectedOpts) { if (o.price) slotTotal += Number(o.price); }
+            if (slotTotal > 0) {
+              const lineTotal = slotTotal * qty;
+              html += `<p class="text-sm font-semibold text-warm-700">${formatPrice(slotTotal, selectedOpts[0].currency)}${qty > 1 ? ' &times; ' + qty + ' = ' + formatPrice(lineTotal, selectedOpts[0].currency) : ''}</p>`;
+            }
+            html += '</div>';
+            html += '<div class="grid grid-cols-3 sm:grid-cols-4 gap-2 p-3">';
+            for (const opt of selectedOpts) {
+              html += '<div class="min-w-0">';
+              if (opt.imageUrl) {
+                html += `<img src="${esc(opt.imageUrl)}" alt="" class="w-full aspect-square object-cover bg-warm-100 rounded-xl" onerror="this.classList.add('hidden')">`;
+              } else {
+                html += '<div class="w-full aspect-square bg-warm-100 rounded-xl flex items-center justify-center text-warm-300 text-2xl">&#9633;</div>';
+              }
+              html += `<p class="text-xs text-warm-900 mt-1 truncate">${esc(opt.name)}</p>`;
+              if (opt.price) html += `<p class="text-xs font-semibold text-warm-600">${formatPrice(opt.price, opt.currency)}</p>`;
+              html += '</div>';
+            }
+            html += '</div></a>';
           } else {
-            html += '<div class="w-full aspect-square bg-warm-100 flex items-center justify-center text-warm-300 text-4xl">&#9633;</div>';
+            // Single-select or multi-select with 1 item: individual card
+            const opt = selectedOpts[0];
+            html += `<a href="#/room/${room.id}/slot/${slot.id}" class="bg-white rounded-2xl border border-warm-200 overflow-hidden hover:shadow-md hover:border-warm-300 transition group">`;
+            if (opt.imageUrl) {
+              html += `<img src="${esc(opt.imageUrl)}" alt="" class="w-full aspect-square object-cover bg-warm-100" onerror="this.classList.add('hidden')">`;
+            } else {
+              html += '<div class="w-full aspect-square bg-warm-100 flex items-center justify-center text-warm-300 text-4xl">&#9633;</div>';
+            }
+            html += '<div class="p-3">';
+            html += `<p class="text-xs text-warm-400">${esc(slot.name)}</p>`;
+            html += `<p class="text-sm font-medium text-warm-900 truncate">${esc(opt.name)}${qty > 1 ? ' &times; ' + qty : ''}</p>`;
+            if (opt.price) {
+              const lineTotal = Number(opt.price) * qty;
+              html += `<p class="text-sm font-semibold text-warm-700 mt-0.5">${formatPrice(opt.price, opt.currency)}${qty > 1 ? ' &times; ' + qty + ' = ' + formatPrice(lineTotal, opt.currency) : ''}</p>`;
+            }
+            html += '</div></a>';
           }
-          html += '<div class="p-3">';
-          html += `<p class="text-xs text-warm-400">${esc(slot.name)}</p>`;
-          html += `<p class="text-sm font-medium text-warm-900 truncate">${esc(opt.name)}${qty > 1 ? ' &times; ' + qty : ''}</p>`;
-          if (opt.price) {
-            const lineTotal = Number(opt.price) * qty;
-            html += `<p class="text-sm font-semibold text-warm-700 mt-0.5">${formatPrice(opt.price, opt.currency)}${qty > 1 ? ' &times; ' + qty + ' = ' + formatPrice(lineTotal, opt.currency) : ''}</p>`;
-          }
-          html += '</div></a>';
         }
         html += '</div>';
       }
