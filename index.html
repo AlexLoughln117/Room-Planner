@@ -42,6 +42,10 @@
     <div class="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between">
       <a href="#/" class="text-lg font-semibold tracking-tight text-warm-800">Interior Planner</a>
       <div class="flex items-center gap-2">
+        <button onclick="showSyncModal()" id="sync-indicator" class="flex items-center gap-1.5 text-sm text-warm-600 hover:text-warm-800 px-3 py-1.5 rounded-lg hover:bg-warm-100 transition">
+          <span class="inline-block w-2 h-2 rounded-full bg-warm-300"></span><span>Not synced</span>
+        </button>
+        <button onclick="pullFromGist().then(ok => { if(ok) render(); })" class="text-sm text-warm-600 hover:text-warm-800 px-3 py-1.5 rounded-lg hover:bg-warm-100 transition" title="Pull latest">&#8635;</button>
         <button onclick="exportData()" class="text-sm text-warm-600 hover:text-warm-800 px-3 py-1.5 rounded-lg hover:bg-warm-100 transition">Export</button>
         <label class="text-sm text-warm-600 hover:text-warm-800 px-3 py-1.5 rounded-lg hover:bg-warm-100 transition cursor-pointer">
           Import
@@ -76,10 +80,135 @@
 
     function saveData(data) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      pushToGist(data);
     }
 
     function getData() {
       return loadData();
+    }
+
+    // ── GitHub Gist Sync ──────────────────────────────────────────────
+    const SYNC_KEY = 'interior-design-sync';
+    let syncStatus = 'idle'; // idle | syncing | synced | error
+    let pushTimer = null;
+
+    function getSyncConfig() {
+      try {
+        const raw = localStorage.getItem(SYNC_KEY);
+        if (raw) return JSON.parse(raw);
+      } catch (e) { /* ignore */ }
+      return { gistId: '', token: '' };
+    }
+
+    function saveSyncConfig(config) {
+      localStorage.setItem(SYNC_KEY, JSON.stringify(config));
+    }
+
+    function updateSyncIndicator() {
+      const el = document.getElementById('sync-indicator');
+      if (!el) return;
+      const config = getSyncConfig();
+      if (!config.gistId) {
+        el.innerHTML = '<span class="inline-block w-2 h-2 rounded-full bg-warm-300"></span><span>Not synced</span>';
+        return;
+      }
+      if (syncStatus === 'syncing') {
+        el.innerHTML = '<span class="inline-block w-2 h-2 rounded-full bg-yellow-400 animate-pulse"></span><span>Syncing...</span>';
+      } else if (syncStatus === 'synced') {
+        el.innerHTML = '<span class="inline-block w-2 h-2 rounded-full bg-green-500"></span><span>Synced</span>';
+      } else if (syncStatus === 'error') {
+        el.innerHTML = '<span class="inline-block w-2 h-2 rounded-full bg-red-500"></span><span>Sync error</span>';
+      } else {
+        el.innerHTML = '<span class="inline-block w-2 h-2 rounded-full bg-green-500"></span><span>Synced</span>';
+      }
+    }
+
+    function pushToGist(data) {
+      const config = getSyncConfig();
+      if (!config.gistId || !config.token) return;
+      // Debounce: wait 1s after last change before pushing
+      clearTimeout(pushTimer);
+      pushTimer = setTimeout(() => doPush(data, config), 1000);
+    }
+
+    async function doPush(data, config) {
+      syncStatus = 'syncing';
+      updateSyncIndicator();
+      try {
+        const resp = await fetch('https://api.github.com/gists/' + config.gistId, {
+          method: 'PATCH',
+          headers: {
+            'Authorization': 'Bearer ' + config.token,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            files: {
+              'interior-design-data.json': {
+                content: JSON.stringify(data, null, 2)
+              }
+            }
+          })
+        });
+        if (!resp.ok) throw new Error('Push failed: ' + resp.status);
+        syncStatus = 'synced';
+      } catch (e) {
+        console.error('Gist push error:', e);
+        syncStatus = 'error';
+      }
+      updateSyncIndicator();
+    }
+
+    async function pullFromGist() {
+      const config = getSyncConfig();
+      if (!config.gistId) return false;
+      syncStatus = 'syncing';
+      updateSyncIndicator();
+      try {
+        const headers = {};
+        if (config.token) headers['Authorization'] = 'Bearer ' + config.token;
+        const resp = await fetch('https://api.github.com/gists/' + config.gistId, { headers });
+        if (!resp.ok) throw new Error('Pull failed: ' + resp.status);
+        const gist = await resp.json();
+        const file = gist.files['interior-design-data.json'];
+        if (!file || !file.content) throw new Error('No data file in gist');
+        const data = JSON.parse(file.content);
+        if (data.rooms && Array.isArray(data.rooms)) {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+          syncStatus = 'synced';
+          updateSyncIndicator();
+          render();
+          return true;
+        }
+        throw new Error('Invalid data format');
+      } catch (e) {
+        console.error('Gist pull error:', e);
+        syncStatus = 'error';
+        updateSyncIndicator();
+        return false;
+      }
+    }
+
+    async function createNewGist(token) {
+      const data = getData();
+      const resp = await fetch('https://api.github.com/gists', {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer ' + token,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          description: 'Interior Design Planner - Shared Data',
+          public: false,
+          files: {
+            'interior-design-data.json': {
+              content: JSON.stringify(data, null, 2)
+            }
+          }
+        })
+      });
+      if (!resp.ok) throw new Error('Create gist failed: ' + resp.status);
+      const gist = await resp.json();
+      return gist.id;
     }
 
     // Room helpers
@@ -1155,8 +1284,83 @@
       render();
     }
 
-    // ── Initial Render ──────────────────────────────────────────────
+    // ── Sync Settings Modal ─────────────────────────────────────────
+    function showSyncModal() {
+      const config = getSyncConfig();
+      openModal(`
+        <div class="p-6">
+          <h2 class="text-lg font-semibold mb-2">Sync Settings</h2>
+          <p class="text-xs text-warm-500 mb-4">Sync your data via a GitHub Gist so multiple people can view and edit the same plan. You'll need a <a href="https://github.com/settings/tokens/new?scopes=gist&description=Interior+Planner+Sync" target="_blank" rel="noopener" class="text-blue-500 underline">GitHub Personal Access Token</a> with the <strong>gist</strong> scope.</p>
+          <div class="space-y-3">
+            <div>
+              <label class="block text-xs font-medium text-warm-600 mb-1">GitHub Token</label>
+              <input id="sync-token" type="password" value="${esc(config.token)}" placeholder="ghp_xxxxxxxxxxxx" class="w-full border border-warm-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-warm-400 font-mono">
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-warm-600 mb-1">Gist ID (leave blank to create new)</label>
+              <input id="sync-gist-id" type="text" value="${esc(config.gistId)}" placeholder="e.g. abc123def456..." class="w-full border border-warm-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-warm-400 font-mono">
+              <p class="text-xs text-warm-400 mt-1">To join an existing sync, paste the Gist ID shared by another user.</p>
+            </div>
+          </div>
+          <div class="flex justify-between items-center mt-4">
+            <button onclick="disconnectSync()" class="text-xs text-red-400 hover:text-red-600 transition">Disconnect</button>
+            <div class="flex gap-2">
+              <button onclick="closeModal()" class="px-4 py-2 text-sm text-warm-600 hover:bg-warm-100 rounded-xl transition">Cancel</button>
+              <button onclick="submitSyncSettings()" id="sync-save-btn" class="px-4 py-2 text-sm bg-warm-800 text-white rounded-xl hover:bg-warm-700 transition">Save & Sync</button>
+            </div>
+          </div>
+        </div>
+      `);
+    }
+
+    async function submitSyncSettings() {
+      const token = document.getElementById('sync-token').value.trim();
+      let gistId = document.getElementById('sync-gist-id').value.trim();
+      const btn = document.getElementById('sync-save-btn');
+
+      if (!token) { alert('Please enter a GitHub token.'); return; }
+
+      btn.textContent = 'Saving...';
+      btn.disabled = true;
+
+      try {
+        if (!gistId) {
+          // Create a new gist
+          gistId = await createNewGist(token);
+        }
+        saveSyncConfig({ gistId, token });
+        syncStatus = 'synced';
+        updateSyncIndicator();
+
+        // Pull latest from gist (in case joining existing)
+        await pullFromGist();
+
+        closeModal();
+        render();
+        alert('Sync connected! Gist ID: ' + gistId + '\\n\\nShare this Gist ID with others so they can connect.');
+      } catch (e) {
+        alert('Failed to connect: ' + e.message);
+        btn.textContent = 'Save & Sync';
+        btn.disabled = false;
+      }
+    }
+
+    function disconnectSync() {
+      saveSyncConfig({ gistId: '', token: '' });
+      syncStatus = 'idle';
+      updateSyncIndicator();
+      closeModal();
+    }
+
+    // ── Initial Render & Auto-Sync ──────────────────────────────────
     render();
+    // Auto-pull from gist on page load if configured
+    (async () => {
+      const config = getSyncConfig();
+      if (config.gistId) {
+        await pullFromGist();
+      }
+    })();
   </script>
 </body>
 </html>
