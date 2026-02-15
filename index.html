@@ -765,7 +765,14 @@
           const fit = checkFit(slot.dimensions, opt.dimensions);
           if (fit.fits !== null) {
             if (fit.fits) {
-              html += '<div class="mt-1.5 flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-green-500"></span><span class="text-xs font-medium text-green-700">Fits</span></div>';
+              const partial = fit.details.length < 3;
+              html += '<div class="mt-1.5">';
+              html += `<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-green-500"></span><span class="text-xs font-medium text-green-700">Fits${partial ? ' (' + fit.details.map(d => d.axis).join(', ') + ' checked)' : ''}</span></div>`;
+              html += '<div class="mt-1 space-y-0.5">';
+              for (const d of fit.details) {
+                html += `<p class="text-xs text-green-600">${d.axis}: item ${esc(d.item)} &le; slot ${esc(d.slot)}</p>`;
+              }
+              html += '</div></div>';
             } else {
               html += '<div class="mt-1.5">';
               html += '<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-red-500"></span><span class="text-xs font-medium text-red-600">Too large</span></div>';
