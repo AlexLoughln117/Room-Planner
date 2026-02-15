@@ -1,0 +1,1133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Interior Design Planner</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            warm: {
+              50: '#faf8f5',
+              100: '#f3efe8',
+              200: '#e8e0d4',
+              300: '#d4c8b6',
+              400: '#bfac94',
+              500: '#a8917a',
+              600: '#8f7762',
+              700: '#76604f',
+              800: '#5e4c3f',
+              900: '#4a3d33',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    body { font-family: 'Inter', sans-serif; }
+    .fade-in { animation: fadeIn 0.2s ease-in; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    .slot-expand { transition: max-height 0.3s ease, opacity 0.3s ease; overflow: hidden; }
+    .modal-backdrop { background: rgba(0,0,0,0.4); backdrop-filter: blur(4px); }
+  </style>
+</head>
+<body class="bg-warm-50 text-warm-900 min-h-screen">
+
+  <nav class="bg-white border-b border-warm-200 sticky top-0 z-40">
+    <div class="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between">
+      <a href="#/" class="text-lg font-semibold tracking-tight text-warm-800">Interior Planner</a>
+      <div class="flex items-center gap-2">
+        <button onclick="exportData()" class="text-sm text-warm-600 hover:text-warm-800 px-3 py-1.5 rounded-lg hover:bg-warm-100 transition">Export</button>
+        <label class="text-sm text-warm-600 hover:text-warm-800 px-3 py-1.5 rounded-lg hover:bg-warm-100 transition cursor-pointer">
+          Import
+          <input type="file" accept=".json" onchange="importData(event)" class="hidden">
+        </label>
+      </div>
+    </div>
+  </nav>
+
+  <main id="app" class="max-w-5xl mx-auto px-4 py-6"></main>
+
+  <!-- Modal container -->
+  <div id="modal-overlay" class="fixed inset-0 z-50 hidden modal-backdrop flex items-center justify-center p-4">
+    <div id="modal-content" class="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto"></div>
+  </div>
+
+  <script>
+    // ── Data Layer ──────────────────────────────────────────────────
+    const STORAGE_KEY = 'interior-design-planner';
+
+    function generateId() {
+      return crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
+    }
+
+    function loadData() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) return JSON.parse(raw);
+      } catch (e) { /* ignore */ }
+      return { rooms: [] };
+    }
+
+    function saveData(data) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    }
+
+    function getData() {
+      return loadData();
+    }
+
+    // Room helpers
+    function addRoom(name) {
+      const data = getData();
+      const room = {
+        id: generateId(),
+        name: name || 'New Room',
+        dimensions: { width: '', length: '', height: '', unit: 'm' },
+        notes: '',
+        furnitureSlots: []
+      };
+      data.rooms.push(room);
+      saveData(data);
+      return room;
+    }
+
+    function updateRoom(id, updates) {
+      const data = getData();
+      const room = data.rooms.find(r => r.id === id);
+      if (room) Object.assign(room, updates);
+      saveData(data);
+    }
+
+    function deleteRoom(id) {
+      const data = getData();
+      data.rooms = data.rooms.filter(r => r.id !== id);
+      saveData(data);
+    }
+
+    function getRoom(id) {
+      return getData().rooms.find(r => r.id === id);
+    }
+
+    // Slot helpers
+    function addSlot(roomId, name) {
+      const data = getData();
+      const room = data.rooms.find(r => r.id === roomId);
+      if (!room) return null;
+      const slot = { id: generateId(), name: name || 'New Item', dimensions: { w: '', d: '', h: '', unit: 'cm' }, options: [], selectedOptionId: null };
+      room.furnitureSlots.push(slot);
+      saveData(data);
+      return slot;
+    }
+
+    function updateSlot(roomId, slotId, updates) {
+      const data = getData();
+      const room = data.rooms.find(r => r.id === roomId);
+      if (!room) return;
+      const slot = room.furnitureSlots.find(s => s.id === slotId);
+      if (slot) Object.assign(slot, updates);
+      saveData(data);
+    }
+
+    function deleteSlot(roomId, slotId) {
+      const data = getData();
+      const room = data.rooms.find(r => r.id === roomId);
+      if (!room) return;
+      room.furnitureSlots = room.furnitureSlots.filter(s => s.id !== slotId);
+      saveData(data);
+    }
+
+    // Option helpers
+    function addOption(roomId, slotId, option) {
+      const data = getData();
+      const room = data.rooms.find(r => r.id === roomId);
+      if (!room) return null;
+      const slot = room.furnitureSlots.find(s => s.id === slotId);
+      if (!slot) return null;
+      const opt = { id: generateId(), url: '', name: '', price: null, currency: '£', dimensions: { w: '', d: '', h: '', unit: 'cm' }, imageUrl: '', notes: '', ...option };
+      slot.options.push(opt);
+      saveData(data);
+      return opt;
+    }
+
+    function updateOption(roomId, slotId, optionId, updates) {
+      const data = getData();
+      const room = data.rooms.find(r => r.id === roomId);
+      if (!room) return;
+      const slot = room.furnitureSlots.find(s => s.id === slotId);
+      if (!slot) return;
+      const opt = slot.options.find(o => o.id === optionId);
+      if (opt) Object.assign(opt, updates);
+      saveData(data);
+    }
+
+    function deleteOption(roomId, slotId, optionId) {
+      const data = getData();
+      const room = data.rooms.find(r => r.id === roomId);
+      if (!room) return;
+      const slot = room.furnitureSlots.find(s => s.id === slotId);
+      if (!slot) return;
+      slot.options = slot.options.filter(o => o.id !== optionId);
+      if (slot.selectedOptionId === optionId) slot.selectedOptionId = null;
+      saveData(data);
+    }
+
+    function selectOption(roomId, slotId, optionId) {
+      const data = getData();
+      const room = data.rooms.find(r => r.id === roomId);
+      if (!room) return;
+      const slot = room.furnitureSlots.find(s => s.id === slotId);
+      if (!slot) return;
+      slot.selectedOptionId = optionId;
+      saveData(data);
+    }
+
+    // Cost helpers
+    function getRoomCost(room) {
+      let total = 0;
+      for (const slot of room.furnitureSlots) {
+        if (slot.selectedOptionId) {
+          const opt = slot.options.find(o => o.id === slot.selectedOptionId);
+          if (opt && opt.price) total += Number(opt.price);
+        }
+      }
+      return total;
+    }
+
+    function getTotalCost() {
+      return getData().rooms.reduce((sum, r) => sum + getRoomCost(r), 0);
+    }
+
+    function getCurrency() {
+      const data = getData();
+      for (const r of data.rooms) {
+        for (const s of r.furnitureSlots) {
+          for (const o of s.options) {
+            if (o.currency) return o.currency;
+          }
+        }
+      }
+      return '£';
+    }
+
+    function formatPrice(amount, currency) {
+      currency = currency || getCurrency();
+      if (amount === null || amount === undefined || amount === '') return '';
+      return currency + Number(amount).toLocaleString('en-GB', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+    }
+
+    function formatDim(dim) {
+      if (!dim) return '';
+      const parts = [];
+      if (dim.w) parts.push('W: ' + dim.w);
+      if (dim.d) parts.push('D: ' + dim.d);
+      if (dim.h) parts.push('H: ' + dim.h);
+      if (!parts.length) return '';
+      return parts.join(' × ') + ' ' + (dim.unit || 'cm');
+    }
+
+    function convertToCm(value, unit) {
+      const v = parseFloat(value);
+      if (isNaN(v)) return null;
+      if (unit === 'mm') return v / 10;
+      if (unit === 'in') return v * 2.54;
+      if (unit === 'm') return v * 100;
+      if (unit === 'ft') return v * 30.48;
+      return v; // cm
+    }
+
+    function checkFit(slotDim, optDim) {
+      // Returns { fits: true/false/null, details: [{axis, slot, item, ok}] }
+      if (!slotDim || !optDim) return { fits: null, details: [] };
+      const axes = [
+        { label: 'W', slotVal: slotDim.w, itemVal: optDim.w },
+        { label: 'D', slotVal: slotDim.d, itemVal: optDim.d },
+        { label: 'H', slotVal: slotDim.h, itemVal: optDim.h }
+      ];
+      const details = [];
+      let allFit = true;
+      let anyChecked = false;
+      for (const a of axes) {
+        const slotCm = convertToCm(a.slotVal, slotDim.unit);
+        const itemCm = convertToCm(a.itemVal, optDim.unit);
+        if (slotCm !== null && itemCm !== null) {
+          anyChecked = true;
+          const ok = itemCm <= slotCm;
+          if (!ok) allFit = false;
+          details.push({ axis: a.label, slot: a.slotVal + ' ' + slotDim.unit, item: a.itemVal + ' ' + optDim.unit, ok });
+        }
+      }
+      if (!anyChecked) return { fits: null, details: [] };
+      return { fits: allFit, details };
+    }
+
+    // ── Import / Export ─────────────────────────────────────────────
+    function exportData() {
+      const data = getData();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'interior-design-plan.json';
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function importData(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const data = JSON.parse(e.target.result);
+          if (data.rooms && Array.isArray(data.rooms)) {
+            saveData(data);
+            navigate(window.location.hash || '#/');
+          } else {
+            alert('Invalid file format: expected { rooms: [...] }');
+          }
+        } catch (err) {
+          alert('Failed to parse JSON file.');
+        }
+      };
+      reader.readAsText(file);
+      event.target.value = '';
+    }
+
+    // ── Auto-Fetch (Microlink API) ────────────────────────────────
+    async function fetchUrlMetadata(url) {
+      const result = { name: '', imageUrl: '', price: null, currency: '£' };
+      try {
+        const apiUrl = 'https://api.microlink.io?url=' + encodeURIComponent(url);
+        const resp = await fetch(apiUrl);
+        if (!resp.ok) return result;
+        const json = await resp.json();
+        if (json.status !== 'success' || !json.data) return result;
+
+        const data = json.data;
+        if (data.title) result.name = data.title;
+        if (data.image && data.image.url) result.imageUrl = data.image.url;
+        if (data.lang) {
+          const lang = data.lang.toLowerCase();
+          if (lang === 'en-gb' || lang.startsWith('en-gb')) result.currency = '£';
+          else if (lang === 'en-us' || lang.startsWith('en-us')) result.currency = '$';
+        }
+      } catch (e) { /* network error — return empty */ }
+      return result;
+    }
+
+    // ── Modal ───────────────────────────────────────────────────────
+    function openModal(html) {
+      document.getElementById('modal-content').innerHTML = html;
+      document.getElementById('modal-overlay').classList.remove('hidden');
+      document.getElementById('modal-overlay').classList.add('flex');
+    }
+
+    function closeModal() {
+      document.getElementById('modal-overlay').classList.add('hidden');
+      document.getElementById('modal-overlay').classList.remove('flex');
+    }
+
+    document.getElementById('modal-overlay').addEventListener('click', function(e) {
+      if (e.target === this) closeModal();
+    });
+
+    // ── Router ──────────────────────────────────────────────────────
+    function navigate(hash) {
+      window.location.hash = hash;
+    }
+
+    function getRoute() {
+      const hash = window.location.hash || '#/';
+      if (hash === '#/' || hash === '#') return { view: 'dashboard' };
+
+      const roomMatch = hash.match(/^#\/room\/([^/]+)$/);
+      if (roomMatch) return { view: 'room', roomId: roomMatch[1] };
+
+      const slotMatch = hash.match(/^#\/room\/([^/]+)\/slot\/([^/]+)$/);
+      if (slotMatch) return { view: 'slot', roomId: slotMatch[1], slotId: slotMatch[2] };
+
+      return { view: 'dashboard' };
+    }
+
+    function render() {
+      const route = getRoute();
+      const app = document.getElementById('app');
+      switch (route.view) {
+        case 'dashboard': renderDashboard(app); break;
+        case 'room': renderRoom(app, route.roomId); break;
+        case 'slot': renderSlot(app, route.roomId, route.slotId); break;
+        default: renderDashboard(app);
+      }
+    }
+
+    window.addEventListener('hashchange', render);
+
+    // ── Escape HTML ─────────────────────────────────────────────────
+    function esc(str) {
+      const div = document.createElement('div');
+      div.textContent = str || '';
+      return div.innerHTML;
+    }
+
+    // ── Dashboard View ──────────────────────────────────────────────
+    function renderDashboard(container) {
+      const data = getData();
+      const totalCost = getTotalCost();
+      const currency = getCurrency();
+
+      let html = '<div class="fade-in">';
+      html += '<div class="flex items-center justify-between mb-6">';
+      html += '<div>';
+      html += '<h1 class="text-2xl font-bold text-warm-900">Your Rooms</h1>';
+      if (data.rooms.length > 0) {
+        html += `<p class="text-sm text-warm-500 mt-1">Total: ${formatPrice(totalCost, currency)}</p>`;
+      }
+      html += '</div>';
+      html += '<button onclick="showAddRoomModal()" class="bg-warm-800 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-warm-700 transition shadow-sm">+ Add Room</button>';
+      html += '</div>';
+
+      if (data.rooms.length === 0) {
+        html += '<div class="text-center py-20">';
+        html += '<div class="text-warm-300 text-5xl mb-4">&#9633;</div>';
+        html += '<p class="text-warm-500 text-lg mb-2">No rooms yet</p>';
+        html += '<p class="text-warm-400 text-sm">Add your first room to get started</p>';
+        html += '</div>';
+      } else {
+        html += '<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">';
+        for (const room of data.rooms) {
+          const cost = getRoomCost(room);
+          const itemCount = room.furnitureSlots.length;
+          const selectedCount = room.furnitureSlots.filter(s => s.selectedOptionId).length;
+          const dim = room.dimensions;
+          const dimStr = (dim.width && dim.length) ? `${dim.width} × ${dim.length}${dim.height ? ' × ' + dim.height : ''} ${dim.unit}` : '';
+
+          html += `<a href="#/room/${room.id}" class="block bg-white rounded-2xl border border-warm-200 p-5 hover:shadow-md hover:border-warm-300 transition group">`;
+          html += `<h3 class="font-semibold text-warm-900 group-hover:text-warm-700 transition">${esc(room.name)}</h3>`;
+          if (dimStr) html += `<p class="text-xs text-warm-400 mt-1">${esc(dimStr)}</p>`;
+          html += '<div class="flex items-center justify-between mt-4">';
+          html += `<span class="text-xs text-warm-500">${itemCount} item${itemCount !== 1 ? 's' : ''}${selectedCount > 0 ? ' · ' + selectedCount + ' selected' : ''}</span>`;
+          if (cost > 0) html += `<span class="text-sm font-semibold text-warm-800">${formatPrice(cost, currency)}</span>`;
+          html += '</div>';
+          html += '</a>';
+        }
+        html += '</div>';
+      }
+      html += '</div>';
+      container.innerHTML = html;
+    }
+
+    function showAddRoomModal() {
+      openModal(`
+        <div class="p-6">
+          <h2 class="text-lg font-semibold mb-4">Add Room</h2>
+          <input id="room-name-input" type="text" placeholder="e.g. Living Room" class="w-full border border-warm-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-warm-400 focus:border-transparent" autofocus>
+          <div class="flex justify-end gap-2 mt-4">
+            <button onclick="closeModal()" class="px-4 py-2 text-sm text-warm-600 hover:bg-warm-100 rounded-xl transition">Cancel</button>
+            <button onclick="submitAddRoom()" class="px-4 py-2 text-sm bg-warm-800 text-white rounded-xl hover:bg-warm-700 transition">Add</button>
+          </div>
+        </div>
+      `);
+      setTimeout(() => {
+        const input = document.getElementById('room-name-input');
+        if (input) {
+          input.focus();
+          input.addEventListener('keydown', e => { if (e.key === 'Enter') submitAddRoom(); });
+        }
+      }, 50);
+    }
+
+    function submitAddRoom() {
+      const input = document.getElementById('room-name-input');
+      const name = input ? input.value.trim() : '';
+      if (!name) return;
+      const room = addRoom(name);
+      closeModal();
+      navigate('#/room/' + room.id);
+    }
+
+    // ── Room View ───────────────────────────────────────────────────
+    function renderRoom(container, roomId) {
+      const room = getRoom(roomId);
+      if (!room) { navigate('#/'); return; }
+
+      const cost = getRoomCost(room);
+      const currency = getCurrency();
+      const dim = room.dimensions;
+
+      let html = '<div class="fade-in">';
+
+      // Breadcrumb
+      html += '<div class="mb-4">';
+      html += '<a href="#/" class="text-sm text-warm-500 hover:text-warm-700 transition">&larr; All Rooms</a>';
+      html += '</div>';
+
+      // Room header
+      html += '<div class="bg-white rounded-2xl border border-warm-200 p-5 mb-4">';
+      html += '<div class="flex items-start justify-between">';
+      html += `<h1 class="text-xl font-bold text-warm-900">${esc(room.name)}</h1>`;
+      html += '<div class="flex gap-2">';
+      html += `<button onclick="showEditRoomModal('${room.id}')" class="text-sm text-warm-500 hover:text-warm-700 transition">Edit</button>`;
+      html += `<button onclick="confirmDeleteRoom('${room.id}')" class="text-sm text-red-400 hover:text-red-600 transition">Delete</button>`;
+      html += '</div></div>';
+
+      // Dimensions
+      const dimStr = (dim.width && dim.length) ? `${dim.width} × ${dim.length}${dim.height ? ' × ' + dim.height : ''} ${dim.unit}` : '';
+      if (dimStr) html += `<p class="text-sm text-warm-500 mt-1">${esc(dimStr)}</p>`;
+      if (room.notes) html += `<p class="text-sm text-warm-400 mt-2">${esc(room.notes)}</p>`;
+      html += '</div>';
+
+      // Furniture slots
+      html += '<div class="flex items-center justify-between mb-3">';
+      html += '<h2 class="text-sm font-semibold text-warm-700 uppercase tracking-wider">Furniture</h2>';
+      html += `<button onclick="showAddSlotModal('${room.id}')" class="text-sm text-warm-600 hover:text-warm-800 bg-warm-100 hover:bg-warm-200 px-3 py-1.5 rounded-lg transition">+ Add Slot</button>`;
+      html += '</div>';
+
+      if (room.furnitureSlots.length === 0) {
+        html += '<div class="text-center py-12 bg-white rounded-2xl border border-warm-200">';
+        html += '<p class="text-warm-400">No furniture slots yet</p>';
+        html += '<p class="text-warm-300 text-sm mt-1">Add a slot like "Sofa" or "Coffee Table"</p>';
+        html += '</div>';
+      } else {
+        html += '<div class="space-y-3">';
+        for (const slot of room.furnitureSlots) {
+          const selected = slot.selectedOptionId ? slot.options.find(o => o.id === slot.selectedOptionId) : null;
+          html += `<a href="#/room/${room.id}/slot/${slot.id}" class="block bg-white rounded-2xl border border-warm-200 p-4 hover:shadow-md hover:border-warm-300 transition group">`;
+          html += '<div class="flex items-center gap-4">';
+
+          // Thumbnail
+          if (selected && selected.imageUrl) {
+            html += `<img src="${esc(selected.imageUrl)}" alt="" class="w-16 h-16 rounded-xl object-cover bg-warm-100 flex-shrink-0" onerror="this.style.display='none'">`;
+          } else {
+            html += '<div class="w-16 h-16 rounded-xl bg-warm-100 flex-shrink-0 flex items-center justify-center text-warm-300 text-xl">&#9633;</div>';
+          }
+
+          html += '<div class="flex-1 min-w-0">';
+          html += `<h3 class="font-medium text-warm-900 group-hover:text-warm-700 transition">${esc(slot.name)}</h3>`;
+          const slotDimStr = formatDim(slot.dimensions);
+          if (slotDimStr) html += `<p class="text-xs text-warm-400">${esc(slotDimStr)}</p>`;
+          if (selected) {
+            html += `<p class="text-sm text-warm-500 truncate">${esc(selected.name)}</p>`;
+            if (selected.price) html += `<p class="text-sm font-semibold text-warm-800 mt-0.5">${formatPrice(selected.price, selected.currency)}</p>`;
+          } else {
+            html += `<p class="text-sm text-warm-400">${slot.options.length} option${slot.options.length !== 1 ? 's' : ''} · none selected</p>`;
+          }
+          html += '</div>';
+
+          html += '<div class="text-warm-300 group-hover:text-warm-500 transition text-lg">&rsaquo;</div>';
+          html += '</div></a>';
+        }
+        html += '</div>';
+      }
+
+      // Room cost bar
+      if (cost > 0) {
+        html += `<div class="sticky bottom-0 mt-6 bg-white border border-warm-200 rounded-2xl p-4 flex items-center justify-between shadow-lg">`;
+        html += '<span class="text-sm text-warm-500">Room Total</span>';
+        html += `<span class="text-lg font-bold text-warm-900">${formatPrice(cost, currency)}</span>`;
+        html += '</div>';
+      }
+
+      html += '</div>';
+      container.innerHTML = html;
+    }
+
+    function showEditRoomModal(roomId) {
+      const room = getRoom(roomId);
+      if (!room) return;
+      const dim = room.dimensions;
+      openModal(`
+        <div class="p-6">
+          <h2 class="text-lg font-semibold mb-4">Edit Room</h2>
+          <div class="space-y-3">
+            <div>
+              <label class="block text-xs font-medium text-warm-600 mb-1">Name</label>
+              <input id="edit-room-name" type="text" value="${esc(room.name)}" class="w-full border border-warm-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-warm-400">
+            </div>
+            <div class="grid grid-cols-4 gap-2">
+              <div>
+                <label class="block text-xs font-medium text-warm-600 mb-1">Width</label>
+                <input id="edit-room-w" type="text" value="${esc(dim.width)}" class="w-full border border-warm-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-warm-400">
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-warm-600 mb-1">Length</label>
+                <input id="edit-room-l" type="text" value="${esc(dim.length)}" class="w-full border border-warm-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-warm-400">
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-warm-600 mb-1">Height</label>
+                <input id="edit-room-h" type="text" value="${esc(dim.height)}" class="w-full border border-warm-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-warm-400">
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-warm-600 mb-1">Unit</label>
+                <select id="edit-room-unit" class="w-full border border-warm-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-warm-400">
+                  <option value="m"${dim.unit === 'm' ? ' selected' : ''}>m</option>
+                  <option value="ft"${dim.unit === 'ft' ? ' selected' : ''}>ft</option>
+                  <option value="cm"${dim.unit === 'cm' ? ' selected' : ''}>cm</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-warm-600 mb-1">Notes</label>
+              <textarea id="edit-room-notes" rows="2" class="w-full border border-warm-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-warm-400 resize-none">${esc(room.notes)}</textarea>
+            </div>
+          </div>
+          <div class="flex justify-end gap-2 mt-4">
+            <button onclick="closeModal()" class="px-4 py-2 text-sm text-warm-600 hover:bg-warm-100 rounded-xl transition">Cancel</button>
+            <button onclick="submitEditRoom('${roomId}')" class="px-4 py-2 text-sm bg-warm-800 text-white rounded-xl hover:bg-warm-700 transition">Save</button>
+          </div>
+        </div>
+      `);
+    }
+
+    function submitEditRoom(roomId) {
+      updateRoom(roomId, {
+        name: document.getElementById('edit-room-name').value.trim() || 'Untitled',
+        dimensions: {
+          width: document.getElementById('edit-room-w').value.trim(),
+          length: document.getElementById('edit-room-l').value.trim(),
+          height: document.getElementById('edit-room-h').value.trim(),
+          unit: document.getElementById('edit-room-unit').value
+        },
+        notes: document.getElementById('edit-room-notes').value.trim()
+      });
+      closeModal();
+      render();
+    }
+
+    function confirmDeleteRoom(roomId) {
+      const room = getRoom(roomId);
+      if (!room) return;
+      openModal(`
+        <div class="p-6">
+          <h2 class="text-lg font-semibold mb-2">Delete Room</h2>
+          <p class="text-sm text-warm-600 mb-4">Are you sure you want to delete "${esc(room.name)}" and all its furniture? This cannot be undone.</p>
+          <div class="flex justify-end gap-2">
+            <button onclick="closeModal()" class="px-4 py-2 text-sm text-warm-600 hover:bg-warm-100 rounded-xl transition">Cancel</button>
+            <button onclick="doDeleteRoom('${roomId}')" class="px-4 py-2 text-sm bg-red-500 text-white rounded-xl hover:bg-red-600 transition">Delete</button>
+          </div>
+        </div>
+      `);
+    }
+
+    function doDeleteRoom(roomId) {
+      deleteRoom(roomId);
+      closeModal();
+      navigate('#/');
+    }
+
+    function showAddSlotModal(roomId) {
+      openModal(`
+        <div class="p-6">
+          <h2 class="text-lg font-semibold mb-4">Add Furniture Slot</h2>
+          <div class="space-y-3">
+            <div>
+              <label class="block text-xs font-medium text-warm-600 mb-1">Name</label>
+              <input id="slot-name-input" type="text" placeholder="e.g. Sofa, Coffee Table, Bookshelf" class="w-full border border-warm-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-warm-400" autofocus>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-warm-600 mb-1">Available Space (optional — max dimensions that fit)</label>
+              <div class="grid grid-cols-4 gap-2">
+                <div>
+                  <label class="block text-xs text-warm-400 mb-1">W</label>
+                  <input id="slot-dim-w" type="text" placeholder="120" class="w-full border border-warm-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-warm-400">
+                </div>
+                <div>
+                  <label class="block text-xs text-warm-400 mb-1">D</label>
+                  <input id="slot-dim-d" type="text" placeholder="60" class="w-full border border-warm-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-warm-400">
+                </div>
+                <div>
+                  <label class="block text-xs text-warm-400 mb-1">H</label>
+                  <input id="slot-dim-h" type="text" placeholder="80" class="w-full border border-warm-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-warm-400">
+                </div>
+                <div>
+                  <label class="block text-xs text-warm-400 mb-1">Unit</label>
+                  <select id="slot-dim-unit" class="w-full border border-warm-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-warm-400">
+                    <option value="cm" selected>cm</option>
+                    <option value="mm">mm</option>
+                    <option value="in">in</option>
+                    <option value="m">m</option>
+                    <option value="ft">ft</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="flex justify-end gap-2 mt-4">
+            <button onclick="closeModal()" class="px-4 py-2 text-sm text-warm-600 hover:bg-warm-100 rounded-xl transition">Cancel</button>
+            <button onclick="submitAddSlot('${roomId}')" class="px-4 py-2 text-sm bg-warm-800 text-white rounded-xl hover:bg-warm-700 transition">Add</button>
+          </div>
+        </div>
+      `);
+      setTimeout(() => {
+        const input = document.getElementById('slot-name-input');
+        if (input) {
+          input.focus();
+          input.addEventListener('keydown', e => { if (e.key === 'Enter') submitAddSlot(roomId); });
+        }
+      }, 50);
+    }
+
+    function submitAddSlot(roomId) {
+      const input = document.getElementById('slot-name-input');
+      const name = input ? input.value.trim() : '';
+      if (!name) return;
+      const slot = addSlot(roomId, name);
+      // Update slot with dimensions if provided
+      const w = document.getElementById('slot-dim-w').value.trim();
+      const d = document.getElementById('slot-dim-d').value.trim();
+      const h = document.getElementById('slot-dim-h').value.trim();
+      if (w || d || h) {
+        updateSlot(roomId, slot.id, {
+          dimensions: { w, d, h, unit: document.getElementById('slot-dim-unit').value }
+        });
+      }
+      closeModal();
+      navigate('#/room/' + roomId + '/slot/' + slot.id);
+    }
+
+    // ── Slot View ───────────────────────────────────────────────────
+    function renderSlot(container, roomId, slotId) {
+      const room = getRoom(roomId);
+      if (!room) { navigate('#/'); return; }
+      const slot = room.furnitureSlots.find(s => s.id === slotId);
+      if (!slot) { navigate('#/room/' + roomId); return; }
+
+      let html = '<div class="fade-in">';
+
+      // Breadcrumb
+      html += '<div class="mb-4 flex items-center gap-1 text-sm text-warm-500">';
+      html += `<a href="#/" class="hover:text-warm-700 transition">Rooms</a>`;
+      html += '<span>&rsaquo;</span>';
+      html += `<a href="#/room/${room.id}" class="hover:text-warm-700 transition">${esc(room.name)}</a>`;
+      html += '<span>&rsaquo;</span>';
+      html += `<span class="text-warm-800 font-medium">${esc(slot.name)}</span>`;
+      html += '</div>';
+
+      // Slot header
+      const slotDimStr = formatDim(slot.dimensions);
+      html += '<div class="bg-white rounded-2xl border border-warm-200 p-5 mb-4">';
+      html += '<div class="flex items-start justify-between">';
+      html += `<div>`;
+      html += `<h1 class="text-xl font-bold text-warm-900">${esc(slot.name)}</h1>`;
+      html += `<p class="text-sm text-warm-400 mt-0.5">${slot.options.length} option${slot.options.length !== 1 ? 's' : ''}</p>`;
+      if (slotDimStr) {
+        html += `<p class="text-sm text-warm-500 mt-1">Available space: <span class="font-medium">${esc(slotDimStr)}</span></p>`;
+      } else {
+        html += `<p class="text-xs text-warm-400 mt-1">No slot dimensions set — edit to add</p>`;
+      }
+      html += '</div>';
+      html += '<div class="flex gap-2">';
+      html += `<button onclick="showEditSlotModal('${roomId}', '${slotId}')" class="text-sm text-warm-500 hover:text-warm-700 px-3 py-1.5 hover:bg-warm-100 rounded-lg transition">Edit</button>`;
+      html += `<button onclick="confirmDeleteSlot('${roomId}', '${slotId}')" class="text-sm text-red-400 hover:text-red-600 px-3 py-1.5 hover:bg-red-50 rounded-lg transition">Delete</button>`;
+      html += '</div></div>';
+      html += '</div>';
+
+      // Add item button
+      html += `<button onclick="showAddOptionModal('${roomId}', '${slotId}')" class="w-full bg-warm-100 hover:bg-warm-200 text-warm-700 border-2 border-dashed border-warm-300 rounded-2xl p-4 text-sm font-medium transition mb-4">+ Add Item Option</button>`;
+
+      // Options
+      if (slot.options.length > 0) {
+        html += '<div class="space-y-3">';
+        for (const opt of slot.options) {
+          const isSelected = slot.selectedOptionId === opt.id;
+          const borderClass = isSelected ? 'border-warm-500 ring-2 ring-warm-200' : 'border-warm-200';
+
+          html += `<div class="bg-white rounded-2xl border ${borderClass} p-4 transition">`;
+          html += '<div class="flex gap-4">';
+
+          // Image
+          if (opt.imageUrl) {
+            html += `<img src="${esc(opt.imageUrl)}" alt="" class="w-24 h-24 rounded-xl object-cover bg-warm-100 flex-shrink-0" onerror="this.style.display='none'">`;
+          }
+
+          html += '<div class="flex-1 min-w-0">';
+          html += '<div class="flex items-start justify-between gap-2">';
+          html += `<h3 class="font-medium text-warm-900">${esc(opt.name || 'Untitled')}</h3>`;
+          html += '<div class="flex gap-1 flex-shrink-0">';
+          html += `<button onclick="showEditOptionModal('${roomId}', '${slotId}', '${opt.id}')" class="text-xs text-warm-400 hover:text-warm-600 p-1 transition" title="Edit">&#9998;</button>`;
+          html += `<button onclick="confirmDeleteOption('${roomId}', '${slotId}', '${opt.id}')" class="text-xs text-red-300 hover:text-red-500 p-1 transition" title="Delete">&times;</button>`;
+          html += '</div></div>';
+
+          if (opt.price) html += `<p class="text-sm font-semibold text-warm-800">${formatPrice(opt.price, opt.currency)}</p>`;
+
+          const dimParts = [];
+          if (opt.dimensions.w) dimParts.push('W: ' + opt.dimensions.w);
+          if (opt.dimensions.d) dimParts.push('D: ' + opt.dimensions.d);
+          if (opt.dimensions.h) dimParts.push('H: ' + opt.dimensions.h);
+          if (dimParts.length) html += `<p class="text-xs text-warm-400 mt-1">${dimParts.join(' · ')} ${esc(opt.dimensions.unit)}</p>`;
+
+          // Fit check
+          const fit = checkFit(slot.dimensions, opt.dimensions);
+          if (fit.fits !== null) {
+            if (fit.fits) {
+              html += '<div class="mt-1.5 flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-green-500"></span><span class="text-xs font-medium text-green-700">Fits</span></div>';
+            } else {
+              html += '<div class="mt-1.5">';
+              html += '<div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-red-500"></span><span class="text-xs font-medium text-red-600">Too large</span></div>';
+              html += '<div class="mt-1 space-y-0.5">';
+              for (const d of fit.details) {
+                const color = d.ok ? 'text-green-600' : 'text-red-600 font-medium';
+                html += `<p class="text-xs ${color}">${d.axis}: item ${esc(d.item)} ${d.ok ? '&le;' : '&gt;'} slot ${esc(d.slot)}</p>`;
+              }
+              html += '</div></div>';
+            }
+          }
+
+          if (opt.notes) html += `<p class="text-xs text-warm-400 mt-1">${esc(opt.notes)}</p>`;
+
+          if (opt.url) html += `<a href="${esc(opt.url)}" target="_blank" rel="noopener" class="text-xs text-blue-500 hover:text-blue-700 mt-1 inline-block truncate max-w-full">View product &rarr;</a>`;
+
+          html += '</div></div>';
+
+          // Select button
+          html += '<div class="mt-3 flex justify-end">';
+          if (isSelected) {
+            html += `<button onclick="selectOption('${roomId}', '${slotId}', null); render()" class="text-xs bg-warm-800 text-white px-4 py-1.5 rounded-lg">&#10003; Selected</button>`;
+          } else {
+            html += `<button onclick="selectOption('${roomId}', '${slotId}', '${opt.id}'); render()" class="text-xs bg-warm-100 text-warm-700 hover:bg-warm-200 px-4 py-1.5 rounded-lg transition">Select</button>`;
+          }
+          html += '</div>';
+
+          html += '</div>';
+        }
+        html += '</div>';
+      }
+
+      html += '</div>';
+      container.innerHTML = html;
+    }
+
+    function showEditSlotModal(roomId, slotId) {
+      const room = getRoom(roomId);
+      const slot = room?.furnitureSlots.find(s => s.id === slotId);
+      if (!slot) return;
+      const dim = slot.dimensions || { w: '', d: '', h: '', unit: 'cm' };
+      openModal(`
+        <div class="p-6">
+          <h2 class="text-lg font-semibold mb-4">Edit Slot</h2>
+          <div class="space-y-3">
+            <div>
+              <label class="block text-xs font-medium text-warm-600 mb-1">Name</label>
+              <input id="edit-slot-name" type="text" value="${esc(slot.name)}" class="w-full border border-warm-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-warm-400" autofocus>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-warm-600 mb-1">Available Space (max dimensions that fit)</label>
+              <div class="grid grid-cols-4 gap-2">
+                <div>
+                  <label class="block text-xs text-warm-400 mb-1">W</label>
+                  <input id="edit-slot-w" type="text" value="${esc(dim.w)}" placeholder="120" class="w-full border border-warm-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-warm-400">
+                </div>
+                <div>
+                  <label class="block text-xs text-warm-400 mb-1">D</label>
+                  <input id="edit-slot-d" type="text" value="${esc(dim.d)}" placeholder="60" class="w-full border border-warm-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-warm-400">
+                </div>
+                <div>
+                  <label class="block text-xs text-warm-400 mb-1">H</label>
+                  <input id="edit-slot-h" type="text" value="${esc(dim.h)}" placeholder="80" class="w-full border border-warm-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-warm-400">
+                </div>
+                <div>
+                  <label class="block text-xs text-warm-400 mb-1">Unit</label>
+                  <select id="edit-slot-unit" class="w-full border border-warm-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-warm-400">
+                    <option value="cm"${dim.unit === 'cm' ? ' selected' : ''}>cm</option>
+                    <option value="mm"${dim.unit === 'mm' ? ' selected' : ''}>mm</option>
+                    <option value="in"${dim.unit === 'in' ? ' selected' : ''}>in</option>
+                    <option value="m"${dim.unit === 'm' ? ' selected' : ''}>m</option>
+                    <option value="ft"${dim.unit === 'ft' ? ' selected' : ''}>ft</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="flex justify-end gap-2 mt-4">
+            <button onclick="closeModal()" class="px-4 py-2 text-sm text-warm-600 hover:bg-warm-100 rounded-xl transition">Cancel</button>
+            <button onclick="submitEditSlot('${roomId}', '${slotId}')" class="px-4 py-2 text-sm bg-warm-800 text-white rounded-xl hover:bg-warm-700 transition">Save</button>
+          </div>
+        </div>
+      `);
+    }
+
+    function submitEditSlot(roomId, slotId) {
+      const name = document.getElementById('edit-slot-name').value.trim();
+      if (!name) return;
+      updateSlot(roomId, slotId, {
+        name,
+        dimensions: {
+          w: document.getElementById('edit-slot-w').value.trim(),
+          d: document.getElementById('edit-slot-d').value.trim(),
+          h: document.getElementById('edit-slot-h').value.trim(),
+          unit: document.getElementById('edit-slot-unit').value
+        }
+      });
+      closeModal();
+      render();
+    }
+
+    function confirmDeleteSlot(roomId, slotId) {
+      const room = getRoom(roomId);
+      const slot = room?.furnitureSlots.find(s => s.id === slotId);
+      if (!slot) return;
+      openModal(`
+        <div class="p-6">
+          <h2 class="text-lg font-semibold mb-2">Delete Slot</h2>
+          <p class="text-sm text-warm-600 mb-4">Delete "${esc(slot.name)}" and all its options?</p>
+          <div class="flex justify-end gap-2">
+            <button onclick="closeModal()" class="px-4 py-2 text-sm text-warm-600 hover:bg-warm-100 rounded-xl transition">Cancel</button>
+            <button onclick="doDeleteSlot('${roomId}', '${slotId}')" class="px-4 py-2 text-sm bg-red-500 text-white rounded-xl hover:bg-red-600 transition">Delete</button>
+          </div>
+        </div>
+      `);
+    }
+
+    function doDeleteSlot(roomId, slotId) {
+      deleteSlot(roomId, slotId);
+      closeModal();
+      navigate('#/room/' + roomId);
+    }
+
+    // ── Add/Edit Option Modals ──────────────────────────────────────
+    function showAddOptionModal(roomId, slotId) {
+      openModal(`
+        <div class="p-6">
+          <h2 class="text-lg font-semibold mb-4">Add Item</h2>
+          <div class="space-y-3">
+            <div>
+              <label class="block text-xs font-medium text-warm-600 mb-1">Product URL (optional)</label>
+              <div class="flex gap-2">
+                <input id="opt-url" type="url" placeholder="https://..." class="flex-1 border border-warm-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-warm-400">
+                <button onclick="doAutoFetch()" id="fetch-btn" class="px-3 py-2.5 text-xs bg-warm-100 hover:bg-warm-200 text-warm-700 rounded-xl transition whitespace-nowrap">Auto-fill</button>
+              </div>
+              <p id="fetch-status" class="text-xs text-warm-400 mt-1 hidden"></p>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-warm-600 mb-1">Name</label>
+              <input id="opt-name" type="text" placeholder="e.g. IKEA KIVIK Sofa" class="w-full border border-warm-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-warm-400">
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="block text-xs font-medium text-warm-600 mb-1">Price</label>
+                <input id="opt-price" type="number" step="0.01" placeholder="799" class="w-full border border-warm-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-warm-400">
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-warm-600 mb-1">Currency</label>
+                <select id="opt-currency" class="w-full border border-warm-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-warm-400">
+                  <option value="£" selected>£ GBP</option>
+                  <option value="$">$ USD</option>
+                  <option value="€">€ EUR</option>
+                </select>
+              </div>
+            </div>
+            <div class="grid grid-cols-4 gap-2">
+              <div>
+                <label class="block text-xs font-medium text-warm-600 mb-1">W</label>
+                <input id="opt-dim-w" type="text" placeholder="228" class="w-full border border-warm-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-warm-400">
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-warm-600 mb-1">D</label>
+                <input id="opt-dim-d" type="text" placeholder="95" class="w-full border border-warm-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-warm-400">
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-warm-600 mb-1">H</label>
+                <input id="opt-dim-h" type="text" placeholder="83" class="w-full border border-warm-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-warm-400">
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-warm-600 mb-1">Unit</label>
+                <select id="opt-dim-unit" class="w-full border border-warm-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-warm-400">
+                  <option value="cm" selected>cm</option>
+                  <option value="mm">mm</option>
+                  <option value="in">in</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-warm-600 mb-1">Image URL</label>
+              <input id="opt-image" type="url" placeholder="https://..." class="w-full border border-warm-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-warm-400">
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-warm-600 mb-1">Notes</label>
+              <textarea id="opt-notes" rows="2" class="w-full border border-warm-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-warm-400 resize-none" placeholder="Any additional notes..."></textarea>
+            </div>
+          </div>
+          <div class="flex justify-end gap-2 mt-4">
+            <button onclick="closeModal()" class="px-4 py-2 text-sm text-warm-600 hover:bg-warm-100 rounded-xl transition">Cancel</button>
+            <button onclick="submitAddOption('${roomId}', '${slotId}')" class="px-4 py-2 text-sm bg-warm-800 text-white rounded-xl hover:bg-warm-700 transition">Add</button>
+          </div>
+        </div>
+      `);
+    }
+
+    async function doAutoFetch() {
+      const urlInput = document.getElementById('opt-url');
+      const url = urlInput ? urlInput.value.trim() : '';
+      if (!url) return;
+
+      const status = document.getElementById('fetch-status');
+      const btn = document.getElementById('fetch-btn');
+      status.classList.remove('hidden');
+      status.textContent = 'Fetching...';
+      btn.disabled = true;
+      btn.textContent = '...';
+
+      const meta = await fetchUrlMetadata(url);
+
+      btn.disabled = false;
+      btn.textContent = 'Auto-fill';
+
+      if (meta.name || meta.imageUrl || meta.price) {
+        if (meta.name) document.getElementById('opt-name').value = meta.name;
+        if (meta.imageUrl) document.getElementById('opt-image').value = meta.imageUrl;
+        if (meta.price) document.getElementById('opt-price').value = meta.price;
+        if (meta.currency) document.getElementById('opt-currency').value = meta.currency;
+        status.textContent = 'Auto-filled from page metadata.';
+      } else {
+        status.textContent = 'Could not extract metadata. Fill in manually.';
+      }
+    }
+
+    function submitAddOption(roomId, slotId) {
+      const name = document.getElementById('opt-name').value.trim();
+      if (!name) { document.getElementById('opt-name').focus(); return; }
+
+      addOption(roomId, slotId, {
+        url: document.getElementById('opt-url').value.trim(),
+        name: name,
+        price: document.getElementById('opt-price').value ? parseFloat(document.getElementById('opt-price').value) : null,
+        currency: document.getElementById('opt-currency').value,
+        dimensions: {
+          w: document.getElementById('opt-dim-w').value.trim(),
+          d: document.getElementById('opt-dim-d').value.trim(),
+          h: document.getElementById('opt-dim-h').value.trim(),
+          unit: document.getElementById('opt-dim-unit').value
+        },
+        imageUrl: document.getElementById('opt-image').value.trim(),
+        notes: document.getElementById('opt-notes').value.trim()
+      });
+      closeModal();
+      render();
+    }
+
+    function showEditOptionModal(roomId, slotId, optionId) {
+      const room = getRoom(roomId);
+      const slot = room?.furnitureSlots.find(s => s.id === slotId);
+      const opt = slot?.options.find(o => o.id === optionId);
+      if (!opt) return;
+
+      openModal(`
+        <div class="p-6">
+          <h2 class="text-lg font-semibold mb-4">Edit Item</h2>
+          <div class="space-y-3">
+            <div>
+              <label class="block text-xs font-medium text-warm-600 mb-1">Product URL</label>
+              <input id="opt-url" type="url" value="${esc(opt.url)}" class="w-full border border-warm-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-warm-400">
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-warm-600 mb-1">Name</label>
+              <input id="opt-name" type="text" value="${esc(opt.name)}" class="w-full border border-warm-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-warm-400">
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="block text-xs font-medium text-warm-600 mb-1">Price</label>
+                <input id="opt-price" type="number" step="0.01" value="${opt.price !== null ? opt.price : ''}" class="w-full border border-warm-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-warm-400">
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-warm-600 mb-1">Currency</label>
+                <select id="opt-currency" class="w-full border border-warm-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-warm-400">
+                  <option value="£"${opt.currency === '£' ? ' selected' : ''}>£ GBP</option>
+                  <option value="$"${opt.currency === '$' ? ' selected' : ''}>$ USD</option>
+                  <option value="€"${opt.currency === '€' ? ' selected' : ''}>€ EUR</option>
+                </select>
+              </div>
+            </div>
+            <div class="grid grid-cols-4 gap-2">
+              <div>
+                <label class="block text-xs font-medium text-warm-600 mb-1">W</label>
+                <input id="opt-dim-w" type="text" value="${esc(opt.dimensions.w)}" class="w-full border border-warm-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-warm-400">
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-warm-600 mb-1">D</label>
+                <input id="opt-dim-d" type="text" value="${esc(opt.dimensions.d)}" class="w-full border border-warm-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-warm-400">
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-warm-600 mb-1">H</label>
+                <input id="opt-dim-h" type="text" value="${esc(opt.dimensions.h)}" class="w-full border border-warm-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-warm-400">
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-warm-600 mb-1">Unit</label>
+                <select id="opt-dim-unit" class="w-full border border-warm-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-warm-400">
+                  <option value="cm"${opt.dimensions.unit === 'cm' ? ' selected' : ''}>cm</option>
+                  <option value="mm"${opt.dimensions.unit === 'mm' ? ' selected' : ''}>mm</option>
+                  <option value="in"${opt.dimensions.unit === 'in' ? ' selected' : ''}>in</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-warm-600 mb-1">Image URL</label>
+              <input id="opt-image" type="url" value="${esc(opt.imageUrl)}" class="w-full border border-warm-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-warm-400">
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-warm-600 mb-1">Notes</label>
+              <textarea id="opt-notes" rows="2" class="w-full border border-warm-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-warm-400 resize-none">${esc(opt.notes)}</textarea>
+            </div>
+          </div>
+          <div class="flex justify-end gap-2 mt-4">
+            <button onclick="closeModal()" class="px-4 py-2 text-sm text-warm-600 hover:bg-warm-100 rounded-xl transition">Cancel</button>
+            <button onclick="submitEditOption('${roomId}', '${slotId}', '${optionId}')" class="px-4 py-2 text-sm bg-warm-800 text-white rounded-xl hover:bg-warm-700 transition">Save</button>
+          </div>
+        </div>
+      `);
+    }
+
+    function submitEditOption(roomId, slotId, optionId) {
+      const name = document.getElementById('opt-name').value.trim();
+      if (!name) { document.getElementById('opt-name').focus(); return; }
+
+      updateOption(roomId, slotId, optionId, {
+        url: document.getElementById('opt-url').value.trim(),
+        name: name,
+        price: document.getElementById('opt-price').value ? parseFloat(document.getElementById('opt-price').value) : null,
+        currency: document.getElementById('opt-currency').value,
+        dimensions: {
+          w: document.getElementById('opt-dim-w').value.trim(),
+          d: document.getElementById('opt-dim-d').value.trim(),
+          h: document.getElementById('opt-dim-h').value.trim(),
+          unit: document.getElementById('opt-dim-unit').value
+        },
+        imageUrl: document.getElementById('opt-image').value.trim(),
+        notes: document.getElementById('opt-notes').value.trim()
+      });
+      closeModal();
+      render();
+    }
+
+    function confirmDeleteOption(roomId, slotId, optionId) {
+      const room = getRoom(roomId);
+      const slot = room?.furnitureSlots.find(s => s.id === slotId);
+      const opt = slot?.options.find(o => o.id === optionId);
+      if (!opt) return;
+      openModal(`
+        <div class="p-6">
+          <h2 class="text-lg font-semibold mb-2">Delete Item</h2>
+          <p class="text-sm text-warm-600 mb-4">Remove "${esc(opt.name || 'this item')}" from the options?</p>
+          <div class="flex justify-end gap-2">
+            <button onclick="closeModal()" class="px-4 py-2 text-sm text-warm-600 hover:bg-warm-100 rounded-xl transition">Cancel</button>
+            <button onclick="doDeleteOption('${roomId}', '${slotId}', '${optionId}')" class="px-4 py-2 text-sm bg-red-500 text-white rounded-xl hover:bg-red-600 transition">Delete</button>
+          </div>
+        </div>
+      `);
+    }
+
+    function doDeleteOption(roomId, slotId, optionId) {
+      deleteOption(roomId, slotId, optionId);
+      closeModal();
+      render();
+    }
+
+    // ── Initial Render ──────────────────────────────────────────────
+    render();
+  </script>
+</body>
+</html>
