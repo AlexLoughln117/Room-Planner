@@ -248,7 +248,7 @@
       const data = getData();
       const room = data.rooms.find(r => r.id === roomId);
       if (!room) return null;
-      const slot = { id: generateId(), name: name || 'New Item', dimensions: { w: '', d: '', h: '', unit: 'cm' }, options: [], selectedOptionId: null, quantity: 1 };
+      const slot = { id: generateId(), name: name || 'New Item', dimensions: { w: '', d: '', h: '', unit: 'cm' }, options: [], selectedOptionId: null, selectedOptionIds: [], multiSelect: false, quantity: 1 };
       room.furnitureSlots.push(slot);
       saveData(data);
       return slot;
@@ -303,6 +303,7 @@
       if (!slot) return;
       slot.options = slot.options.filter(o => o.id !== optionId);
       if (slot.selectedOptionId === optionId) slot.selectedOptionId = null;
+      if (slot.selectedOptionIds) slot.selectedOptionIds = slot.selectedOptionIds.filter(id => id !== optionId);
       saveData(data);
     }
 
@@ -316,13 +317,48 @@
       saveData(data);
     }
 
+    function toggleOption(roomId, slotId, optionId) {
+      const data = getData();
+      const room = data.rooms.find(r => r.id === roomId);
+      if (!room) return;
+      const slot = room.furnitureSlots.find(s => s.id === slotId);
+      if (!slot) return;
+      if (!slot.selectedOptionIds) slot.selectedOptionIds = [];
+      const idx = slot.selectedOptionIds.indexOf(optionId);
+      if (idx >= 0) {
+        slot.selectedOptionIds.splice(idx, 1);
+      } else {
+        slot.selectedOptionIds.push(optionId);
+      }
+      saveData(data);
+    }
+
+    function getSelectedOptions(slot) {
+      if (slot.multiSelect) {
+        const ids = slot.selectedOptionIds || [];
+        return slot.options.filter(o => ids.includes(o.id));
+      }
+      if (slot.selectedOptionId) {
+        const opt = slot.options.find(o => o.id === slot.selectedOptionId);
+        return opt ? [opt] : [];
+      }
+      return [];
+    }
+
+    function isOptionSelected(slot, optionId) {
+      if (slot.multiSelect) {
+        return (slot.selectedOptionIds || []).includes(optionId);
+      }
+      return slot.selectedOptionId === optionId;
+    }
+
     // Cost helpers
     function getRoomCost(room) {
       let total = 0;
       for (const slot of room.furnitureSlots) {
-        if (slot.selectedOptionId) {
-          const opt = slot.options.find(o => o.id === slot.selectedOptionId);
-          if (opt && opt.price) total += Number(opt.price) * (slot.quantity || 1);
+        const selected = getSelectedOptions(slot);
+        for (const opt of selected) {
+          if (opt.price) total += Number(opt.price) * (slot.quantity || 1);
         }
       }
       return total;
@@ -532,7 +568,7 @@
         for (const room of data.rooms) {
           const cost = getRoomCost(room);
           const itemCount = room.furnitureSlots.length;
-          const selectedCount = room.furnitureSlots.filter(s => s.selectedOptionId).length;
+          const selectedCount = room.furnitureSlots.filter(s => getSelectedOptions(s).length > 0).length;
           const dim = room.dimensions;
           const dimStr = (dim.width && dim.length) ? `${dim.width} × ${dim.length}${dim.height ? ' × ' + dim.height : ''} ${dim.unit}` : '';
 
@@ -625,27 +661,40 @@
       } else {
         html += '<div class="space-y-3">';
         for (const slot of room.furnitureSlots) {
-          const selected = slot.selectedOptionId ? slot.options.find(o => o.id === slot.selectedOptionId) : null;
+          const selectedOpts = getSelectedOptions(slot);
+          const firstSelected = selectedOpts[0] || null;
           html += `<a href="#/room/${room.id}/slot/${slot.id}" class="block bg-white rounded-2xl border border-warm-200 p-4 hover:shadow-md hover:border-warm-300 transition group">`;
           html += '<div class="flex items-center gap-4">';
 
           // Thumbnail
-          if (selected && selected.imageUrl) {
-            html += `<img src="${esc(selected.imageUrl)}" alt="" class="w-16 h-16 rounded-xl object-cover bg-warm-100 flex-shrink-0" onerror="this.style.display='none'">`;
+          if (firstSelected && firstSelected.imageUrl) {
+            html += `<img src="${esc(firstSelected.imageUrl)}" alt="" class="w-16 h-16 rounded-xl object-cover bg-warm-100 flex-shrink-0" onerror="this.style.display='none'">`;
           } else {
             html += '<div class="w-16 h-16 rounded-xl bg-warm-100 flex-shrink-0 flex items-center justify-center text-warm-300 text-xl">&#9633;</div>';
           }
 
           html += '<div class="flex-1 min-w-0">';
-          html += `<h3 class="font-medium text-warm-900 group-hover:text-warm-700 transition">${esc(slot.name)}</h3>`;
+          html += `<h3 class="font-medium text-warm-900 group-hover:text-warm-700 transition">${esc(slot.name)}`;
+          if (slot.multiSelect) html += ' <span class="text-xs font-normal text-warm-400">(multi)</span>';
+          html += '</h3>';
           const slotDimStr = formatDim(slot.dimensions);
           if (slotDimStr) html += `<p class="text-xs text-warm-400">${esc(slotDimStr)}</p>`;
-          if (selected) {
+          if (selectedOpts.length > 0) {
             const qty = slot.quantity || 1;
-            html += `<p class="text-sm text-warm-500 truncate">${esc(selected.name)}${qty > 1 ? ' &times; ' + qty : ''}</p>`;
-            if (selected.price) {
-              const lineTotal = Number(selected.price) * qty;
-              html += `<p class="text-sm font-semibold text-warm-800 mt-0.5">${formatPrice(selected.price, selected.currency)}${qty > 1 ? ' &times; ' + qty + ' = ' + formatPrice(lineTotal, selected.currency) : ''}</p>`;
+            if (slot.multiSelect) {
+              html += `<p class="text-sm text-warm-500 truncate">${selectedOpts.map(o => esc(o.name)).join(', ')}</p>`;
+              let slotTotal = 0;
+              for (const o of selectedOpts) { if (o.price) slotTotal += Number(o.price); }
+              if (slotTotal > 0) {
+                const lineTotal = slotTotal * qty;
+                html += `<p class="text-sm font-semibold text-warm-800 mt-0.5">${formatPrice(slotTotal, firstSelected.currency)}${qty > 1 ? ' &times; ' + qty + ' = ' + formatPrice(lineTotal, firstSelected.currency) : ''}</p>`;
+              }
+            } else {
+              html += `<p class="text-sm text-warm-500 truncate">${esc(firstSelected.name)}${qty > 1 ? ' &times; ' + qty : ''}</p>`;
+              if (firstSelected.price) {
+                const lineTotal = Number(firstSelected.price) * qty;
+                html += `<p class="text-sm font-semibold text-warm-800 mt-0.5">${formatPrice(firstSelected.price, firstSelected.currency)}${qty > 1 ? ' &times; ' + qty + ' = ' + formatPrice(lineTotal, firstSelected.currency) : ''}</p>`;
+              }
             }
           } else {
             html += `<p class="text-sm text-warm-400">${slot.options.length} option${slot.options.length !== 1 ? 's' : ''} · none selected</p>`;
@@ -847,7 +896,9 @@
       html += '<div class="flex items-start justify-between">';
       html += `<div>`;
       html += `<h1 class="text-xl font-bold text-warm-900">${esc(slot.name)}</h1>`;
-      html += `<p class="text-sm text-warm-400 mt-0.5">${slot.options.length} option${slot.options.length !== 1 ? 's' : ''}</p>`;
+      html += `<p class="text-sm text-warm-400 mt-0.5">${slot.options.length} option${slot.options.length !== 1 ? 's' : ''}`;
+      if (slot.multiSelect) html += ' · <span class="text-warm-500 font-medium">multi-select</span>';
+      html += '</p>';
       if (slotDimStr) {
         html += `<p class="text-sm text-warm-500 mt-1">Available space: <span class="font-medium">${esc(slotDimStr)}</span></p>`;
       } else {
@@ -876,7 +927,7 @@
       if (slot.options.length > 0) {
         html += '<div class="space-y-3">';
         for (const opt of slot.options) {
-          const isSelected = slot.selectedOptionId === opt.id;
+          const isSelected = isOptionSelected(slot, opt.id);
           const borderClass = isSelected ? 'border-warm-500 ring-2 ring-warm-200' : 'border-warm-200';
 
           html += `<div class="bg-white rounded-2xl border ${borderClass} p-4 transition">`;
@@ -935,10 +986,18 @@
 
           // Select button
           html += '<div class="mt-3 flex justify-end">';
-          if (isSelected) {
-            html += `<button onclick="selectOption('${roomId}', '${slotId}', null); render()" class="text-xs bg-warm-800 text-white px-4 py-1.5 rounded-lg">&#10003; Selected</button>`;
+          if (slot.multiSelect) {
+            if (isSelected) {
+              html += `<button onclick="toggleOption('${roomId}', '${slotId}', '${opt.id}'); render()" class="text-xs bg-warm-800 text-white px-4 py-1.5 rounded-lg">&#10003; Selected</button>`;
+            } else {
+              html += `<button onclick="toggleOption('${roomId}', '${slotId}', '${opt.id}'); render()" class="text-xs bg-warm-100 text-warm-700 hover:bg-warm-200 px-4 py-1.5 rounded-lg transition">+ Add</button>`;
+            }
           } else {
-            html += `<button onclick="selectOption('${roomId}', '${slotId}', '${opt.id}'); render()" class="text-xs bg-warm-100 text-warm-700 hover:bg-warm-200 px-4 py-1.5 rounded-lg transition">Select</button>`;
+            if (isSelected) {
+              html += `<button onclick="selectOption('${roomId}', '${slotId}', null); render()" class="text-xs bg-warm-800 text-white px-4 py-1.5 rounded-lg">&#10003; Selected</button>`;
+            } else {
+              html += `<button onclick="selectOption('${roomId}', '${slotId}', '${opt.id}'); render()" class="text-xs bg-warm-100 text-warm-700 hover:bg-warm-200 px-4 py-1.5 rounded-lg transition">Select</button>`;
+            }
           }
           html += '</div>';
 
@@ -963,6 +1022,12 @@
             <div>
               <label class="block text-xs font-medium text-warm-600 mb-1">Name</label>
               <input id="edit-slot-name" type="text" value="${esc(slot.name)}" class="w-full border border-warm-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-warm-400" autofocus>
+            </div>
+            <div>
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input id="edit-slot-multi" type="checkbox" ${slot.multiSelect ? 'checked' : ''} class="rounded border-warm-300 text-warm-700 focus:ring-warm-400">
+                <span class="text-xs font-medium text-warm-600">Allow selecting multiple items (e.g. accessories)</span>
+              </label>
             </div>
             <div>
               <label class="block text-xs font-medium text-warm-600 mb-1">Available Space (max dimensions that fit)</label>
@@ -1003,15 +1068,29 @@
     function submitEditSlot(roomId, slotId) {
       const name = document.getElementById('edit-slot-name').value.trim();
       if (!name) return;
-      updateSlot(roomId, slotId, {
+      const multiSelect = document.getElementById('edit-slot-multi').checked;
+      const room = getRoom(roomId);
+      const slot = room?.furnitureSlots.find(s => s.id === slotId);
+      // When switching from single to multi, migrate selectedOptionId to selectedOptionIds
+      const updates = {
         name,
+        multiSelect,
         dimensions: {
           w: document.getElementById('edit-slot-w').value.trim(),
           d: document.getElementById('edit-slot-d').value.trim(),
           h: document.getElementById('edit-slot-h').value.trim(),
           unit: document.getElementById('edit-slot-unit').value
         }
-      });
+      };
+      if (multiSelect && slot && !slot.multiSelect && slot.selectedOptionId) {
+        updates.selectedOptionIds = [slot.selectedOptionId];
+        updates.selectedOptionId = null;
+      } else if (!multiSelect && slot && slot.multiSelect) {
+        const ids = slot.selectedOptionIds || [];
+        updates.selectedOptionId = ids.length > 0 ? ids[0] : null;
+        updates.selectedOptionIds = [];
+      }
+      updateSlot(roomId, slotId, updates);
       closeModal();
       render();
     }
