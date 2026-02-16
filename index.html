@@ -987,20 +987,35 @@
       html += `<button onclick="showEditSlotModal('${roomId}', '${slotId}')" class="text-sm text-warm-500 hover:text-warm-700 px-3 py-1.5 hover:bg-warm-100 rounded-lg transition">Edit</button>`;
       html += `<button onclick="confirmDeleteSlot('${roomId}', '${slotId}')" class="text-sm text-red-400 hover:text-red-600 px-3 py-1.5 hover:bg-red-50 rounded-lg transition">Delete</button>`;
       html += '</div></div>';
+
+      // Add Notes / Add Tips buttons
+      const hasNotes = slot.notes && slot.notes.trim();
+      const hasTips = slot.designTips && slot.designTips.trim();
+      html += '<div class="flex gap-2 mt-3">';
+      if (!hasNotes) {
+        html += `<button onclick="toggleSlotSection('${slotId}', 'notes')" class="text-xs text-warm-500 hover:text-warm-700 bg-warm-100 hover:bg-warm-200 px-3 py-1.5 rounded-lg transition">+ Add Notes</button>`;
+      }
+      if (!hasTips) {
+        html += `<button onclick="toggleSlotSection('${slotId}', 'tips')" class="text-xs text-warm-500 hover:text-warm-700 bg-warm-100 hover:bg-warm-200 px-3 py-1.5 rounded-lg transition">+ Add Design Tips</button>`;
+      }
       html += '</div>';
 
-      // Notes section
-      html += '<div class="bg-white rounded-2xl border border-warm-200 p-5 mb-4">';
+      html += '</div>';
+
+      // Notes section (shown if has content or toggled open)
+      html += `<div id="slot-notes-section-${slotId}" class="bg-white rounded-2xl border border-warm-200 p-5 mb-4${hasNotes ? '' : ' hidden'}">`;
       html += '<div class="flex items-center justify-between mb-2">';
       html += '<h2 class="text-sm font-semibold text-warm-700 uppercase tracking-wider flex items-center gap-2"><span>&#9998;</span> Notes</h2>';
+      html += `<button onclick="clearSlotSection('${roomId}', '${slotId}', 'notes')" class="text-xs text-warm-400 hover:text-red-500 transition">Remove</button>`;
       html += '</div>';
       html += `<textarea id="slot-notes-${slotId}" rows="3" placeholder="Add notes about this item... e.g. colour preferences, materials, considerations" class="w-full border border-warm-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-warm-400 resize-none text-warm-700" oninput="updateSlot('${roomId}', '${slotId}', { notes: this.value })">${esc(slot.notes || '')}</textarea>`;
       html += '</div>';
 
-      // Design Tips section
-      html += '<div class="bg-gradient-to-br from-warm-50 to-warm-100 rounded-2xl border border-warm-200 p-5 mb-4">';
+      // Design Tips section (shown if has content or toggled open)
+      html += `<div id="slot-tips-section-${slotId}" class="bg-gradient-to-br from-warm-50 to-warm-100 rounded-2xl border border-warm-200 p-5 mb-4${hasTips ? '' : ' hidden'}">`;
       html += '<div class="flex items-center justify-between mb-2">';
       html += '<h2 class="text-sm font-semibold text-warm-600 uppercase tracking-wider flex items-center gap-2"><span>&#10024;</span> Interior Design Tips</h2>';
+      html += `<button onclick="clearSlotSection('${roomId}', '${slotId}', 'tips')" class="text-xs text-warm-400 hover:text-red-500 transition">Remove</button>`;
       html += '</div>';
       html += `<textarea id="slot-tips-${slotId}" rows="3" placeholder="Add design tips... e.g. pair with warm lighting, leave 60cm walkway clearance, consider scale relative to room size" class="w-full border border-warm-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-warm-400 resize-none text-warm-600 bg-white/70" oninput="updateSlot('${roomId}', '${slotId}', { designTips: this.value })">${esc(slot.designTips || '')}</textarea>`;
       html += '</div>';
@@ -1187,6 +1202,25 @@
       }
       updateSlot(roomId, slotId, updates);
       closeModal();
+      render();
+    }
+
+    function toggleSlotSection(slotId, type) {
+      const sectionId = type === 'notes' ? 'slot-notes-section-' + slotId : 'slot-tips-section-' + slotId;
+      const section = document.getElementById(sectionId);
+      if (section) {
+        section.classList.remove('hidden');
+        const textarea = section.querySelector('textarea');
+        if (textarea) textarea.focus();
+      }
+    }
+
+    function clearSlotSection(roomId, slotId, type) {
+      if (type === 'notes') {
+        updateSlot(roomId, slotId, { notes: '' });
+      } else {
+        updateSlot(roomId, slotId, { designTips: '' });
+      }
       render();
     }
 
