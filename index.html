@@ -988,37 +988,50 @@
       html += `<button onclick="confirmDeleteSlot('${roomId}', '${slotId}')" class="text-sm text-red-400 hover:text-red-600 px-3 py-1.5 hover:bg-red-50 rounded-lg transition">Delete</button>`;
       html += '</div></div>';
 
-      // Add Notes / Add Tips buttons
+      // Add Notes / Add Tips buttons (only show if no saved content)
       const hasNotes = slot.notes && slot.notes.trim();
       const hasTips = slot.designTips && slot.designTips.trim();
-      html += '<div class="flex gap-2 mt-3">';
-      if (!hasNotes) {
-        html += `<button onclick="toggleSlotSection('${slotId}', 'notes')" class="text-xs text-warm-500 hover:text-warm-700 bg-warm-100 hover:bg-warm-200 px-3 py-1.5 rounded-lg transition">+ Add Notes</button>`;
+      if (!hasNotes || !hasTips) {
+        html += '<div class="flex gap-2 mt-3">';
+        if (!hasNotes) {
+          html += `<button onclick="showSlotSectionEditor('${roomId}', '${slotId}', 'notes')" class="text-xs text-warm-500 hover:text-warm-700 bg-warm-100 hover:bg-warm-200 px-3 py-1.5 rounded-lg transition">+ Add Notes</button>`;
+        }
+        if (!hasTips) {
+          html += `<button onclick="showSlotSectionEditor('${roomId}', '${slotId}', 'tips')" class="text-xs text-warm-500 hover:text-warm-700 bg-warm-100 hover:bg-warm-200 px-3 py-1.5 rounded-lg transition">+ Add Design Tips</button>`;
+        }
+        html += '</div>';
       }
-      if (!hasTips) {
-        html += `<button onclick="toggleSlotSection('${slotId}', 'tips')" class="text-xs text-warm-500 hover:text-warm-700 bg-warm-100 hover:bg-warm-200 px-3 py-1.5 rounded-lg transition">+ Add Design Tips</button>`;
+
+      html += '</div>';
+
+      // Notes display (only if saved content exists)
+      if (hasNotes) {
+        html += '<div class="bg-white rounded-2xl border border-warm-200 p-5 mb-4">';
+        html += '<div class="flex items-center justify-between mb-2">';
+        html += '<h2 class="text-sm font-semibold text-warm-700 uppercase tracking-wider flex items-center gap-2"><span>&#9998;</span> Notes</h2>';
+        html += '<div class="flex gap-2">';
+        html += `<button onclick="showSlotSectionEditor('${roomId}', '${slotId}', 'notes')" class="text-xs text-warm-500 hover:text-warm-700 transition">Edit</button>`;
+        html += `<button onclick="clearSlotSection('${roomId}', '${slotId}', 'notes')" class="text-xs text-warm-400 hover:text-red-500 transition">Remove</button>`;
+        html += '</div></div>';
+        html += `<p class="text-sm text-warm-700 whitespace-pre-wrap">${esc(slot.notes)}</p>`;
+        html += '</div>';
       }
-      html += '</div>';
 
-      html += '</div>';
+      // Design Tips display (only if saved content exists)
+      if (hasTips) {
+        html += '<div class="bg-gradient-to-br from-warm-50 to-warm-100 rounded-2xl border border-warm-200 p-5 mb-4">';
+        html += '<div class="flex items-center justify-between mb-2">';
+        html += '<h2 class="text-sm font-semibold text-warm-600 uppercase tracking-wider flex items-center gap-2"><span>&#10024;</span> Interior Design Tips</h2>';
+        html += '<div class="flex gap-2">';
+        html += `<button onclick="showSlotSectionEditor('${roomId}', '${slotId}', 'tips')" class="text-xs text-warm-500 hover:text-warm-700 transition">Edit</button>`;
+        html += `<button onclick="clearSlotSection('${roomId}', '${slotId}', 'tips')" class="text-xs text-warm-400 hover:text-red-500 transition">Remove</button>`;
+        html += '</div></div>';
+        html += `<p class="text-sm text-warm-600 whitespace-pre-wrap">${esc(slot.designTips)}</p>`;
+        html += '</div>';
+      }
 
-      // Notes section (shown if has content or toggled open)
-      html += `<div id="slot-notes-section-${slotId}" class="bg-white rounded-2xl border border-warm-200 p-5 mb-4${hasNotes ? '' : ' hidden'}">`;
-      html += '<div class="flex items-center justify-between mb-2">';
-      html += '<h2 class="text-sm font-semibold text-warm-700 uppercase tracking-wider flex items-center gap-2"><span>&#9998;</span> Notes</h2>';
-      html += `<button onclick="clearSlotSection('${roomId}', '${slotId}', 'notes')" class="text-xs text-warm-400 hover:text-red-500 transition">Remove</button>`;
-      html += '</div>';
-      html += `<textarea id="slot-notes-${slotId}" rows="3" placeholder="Add notes about this item... e.g. colour preferences, materials, considerations" class="w-full border border-warm-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-warm-400 resize-none text-warm-700" oninput="updateSlot('${roomId}', '${slotId}', { notes: this.value })">${esc(slot.notes || '')}</textarea>`;
-      html += '</div>';
-
-      // Design Tips section (shown if has content or toggled open)
-      html += `<div id="slot-tips-section-${slotId}" class="bg-gradient-to-br from-warm-50 to-warm-100 rounded-2xl border border-warm-200 p-5 mb-4${hasTips ? '' : ' hidden'}">`;
-      html += '<div class="flex items-center justify-between mb-2">';
-      html += '<h2 class="text-sm font-semibold text-warm-600 uppercase tracking-wider flex items-center gap-2"><span>&#10024;</span> Interior Design Tips</h2>';
-      html += `<button onclick="clearSlotSection('${roomId}', '${slotId}', 'tips')" class="text-xs text-warm-400 hover:text-red-500 transition">Remove</button>`;
-      html += '</div>';
-      html += `<textarea id="slot-tips-${slotId}" rows="3" placeholder="Add design tips... e.g. pair with warm lighting, leave 60cm walkway clearance, consider scale relative to room size" class="w-full border border-warm-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-warm-400 resize-none text-warm-600 bg-white/70" oninput="updateSlot('${roomId}', '${slotId}', { designTips: this.value })">${esc(slot.designTips || '')}</textarea>`;
-      html += '</div>';
+      // Inline editor container (hidden by default, shown when adding/editing)
+      html += `<div id="slot-section-editor-${slotId}" class="hidden mb-4"></div>`;
 
       // Add item button
       html += `<button onclick="showAddOptionModal('${roomId}', '${slotId}')" class="w-full bg-warm-100 hover:bg-warm-200 text-warm-700 border-2 border-dashed border-warm-300 rounded-2xl p-4 text-sm font-medium transition mb-4">+ Add Item Option</button>`;
@@ -1205,13 +1218,54 @@
       render();
     }
 
-    function toggleSlotSection(slotId, type) {
-      const sectionId = type === 'notes' ? 'slot-notes-section-' + slotId : 'slot-tips-section-' + slotId;
-      const section = document.getElementById(sectionId);
-      if (section) {
-        section.classList.remove('hidden');
-        const textarea = section.querySelector('textarea');
-        if (textarea) textarea.focus();
+    function showSlotSectionEditor(roomId, slotId, type) {
+      const container = document.getElementById('slot-section-editor-' + slotId);
+      if (!container) return;
+      const room = getRoom(roomId);
+      const slot = room?.furnitureSlots.find(s => s.id === slotId);
+      if (!slot) return;
+
+      const isNotes = type === 'notes';
+      const currentValue = isNotes ? (slot.notes || '') : (slot.designTips || '');
+      const label = isNotes ? 'Notes' : 'Interior Design Tips';
+      const placeholder = isNotes
+        ? 'Add notes about this item... e.g. colour preferences, materials, considerations'
+        : 'Add design tips... e.g. pair with warm lighting, leave 60cm walkway clearance, consider scale relative to room size';
+      const bgClass = isNotes ? 'bg-white' : 'bg-gradient-to-br from-warm-50 to-warm-100';
+      const icon = isNotes ? '&#9998;' : '&#10024;';
+
+      container.className = bgClass + ' rounded-2xl border border-warm-200 p-5 mb-4 fade-in';
+      container.innerHTML = `
+        <h2 class="text-sm font-semibold text-warm-${isNotes ? '700' : '600'} uppercase tracking-wider flex items-center gap-2 mb-2"><span>${icon}</span> ${label}</h2>
+        <textarea id="slot-section-textarea" rows="4" placeholder="${placeholder}" class="w-full border border-warm-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-warm-400 resize-none text-warm-700 ${isNotes ? '' : 'bg-white/70'}">${esc(currentValue)}</textarea>
+        <div class="flex justify-end gap-2 mt-2">
+          <button onclick="cancelSlotSectionEditor('${slotId}')" class="px-3 py-1.5 text-xs text-warm-600 hover:bg-warm-100 rounded-lg transition">Cancel</button>
+          <button onclick="saveSlotSection('${roomId}', '${slotId}', '${type}')" class="px-3 py-1.5 text-xs bg-warm-800 text-white rounded-lg hover:bg-warm-700 transition">Save</button>
+        </div>
+      `;
+      setTimeout(() => {
+        const ta = document.getElementById('slot-section-textarea');
+        if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+      }, 50);
+    }
+
+    function saveSlotSection(roomId, slotId, type) {
+      const ta = document.getElementById('slot-section-textarea');
+      if (!ta) return;
+      const value = ta.value.trim();
+      if (type === 'notes') {
+        updateSlot(roomId, slotId, { notes: value });
+      } else {
+        updateSlot(roomId, slotId, { designTips: value });
+      }
+      render();
+    }
+
+    function cancelSlotSectionEditor(slotId) {
+      const container = document.getElementById('slot-section-editor-' + slotId);
+      if (container) {
+        container.className = 'hidden mb-4';
+        container.innerHTML = '';
       }
     }
 
