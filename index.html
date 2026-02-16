@@ -248,7 +248,7 @@
       const data = getData();
       const room = data.rooms.find(r => r.id === roomId);
       if (!room) return null;
-      const slot = { id: generateId(), name: name || 'New Item', dimensions: { w: '', d: '', h: '', unit: 'cm' }, options: [], selectedOptionId: null, selectedOptionIds: [], multiSelect: false, quantity: 1 };
+      const slot = { id: generateId(), name: name || 'New Item', dimensions: { w: '', d: '', h: '', unit: 'cm' }, options: [], selectedOptionId: null, selectedOptionIds: [], multiSelect: false, quantity: 1, notes: '', designTips: '' };
       room.furnitureSlots.push(slot);
       saveData(data);
       return slot;
@@ -583,6 +583,16 @@
         }
         html += '</div>';
       }
+
+      // Design reference PDF link
+      html += '<div class="mt-8">';
+      html += '<a href="https://drive.google.com/file/d/1s5I7Hdt5IvP7rLeET2vY3wGtdVcUdp9G/view?usp=sharing" target="_blank" rel="noopener" class="inline-flex items-center gap-2 bg-white border border-warm-200 rounded-2xl px-5 py-3 hover:shadow-md hover:border-warm-300 transition text-sm text-warm-700 hover:text-warm-900">';
+      html += '<span class="text-lg">&#128196;</span>';
+      html += '<span class="font-medium">Interior Design Reference PDF</span>';
+      html += '<span class="text-warm-400">&rarr;</span>';
+      html += '</a>';
+      html += '</div>';
+
       html += '</div>';
       container.innerHTML = html;
     }
@@ -979,6 +989,22 @@
       html += '</div></div>';
       html += '</div>';
 
+      // Notes section
+      html += '<div class="bg-white rounded-2xl border border-warm-200 p-5 mb-4">';
+      html += '<div class="flex items-center justify-between mb-2">';
+      html += '<h2 class="text-sm font-semibold text-warm-700 uppercase tracking-wider flex items-center gap-2"><span>&#9998;</span> Notes</h2>';
+      html += '</div>';
+      html += `<textarea id="slot-notes-${slotId}" rows="3" placeholder="Add notes about this item... e.g. colour preferences, materials, considerations" class="w-full border border-warm-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-warm-400 resize-none text-warm-700" oninput="updateSlot('${roomId}', '${slotId}', { notes: this.value })">${esc(slot.notes || '')}</textarea>`;
+      html += '</div>';
+
+      // Design Tips section
+      html += '<div class="bg-gradient-to-br from-warm-50 to-warm-100 rounded-2xl border border-warm-200 p-5 mb-4">';
+      html += '<div class="flex items-center justify-between mb-2">';
+      html += '<h2 class="text-sm font-semibold text-warm-600 uppercase tracking-wider flex items-center gap-2"><span>&#10024;</span> Interior Design Tips</h2>';
+      html += '</div>';
+      html += `<textarea id="slot-tips-${slotId}" rows="3" placeholder="Add design tips... e.g. pair with warm lighting, leave 60cm walkway clearance, consider scale relative to room size" class="w-full border border-warm-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-warm-400 resize-none text-warm-600 bg-white/70" oninput="updateSlot('${roomId}', '${slotId}', { designTips: this.value })">${esc(slot.designTips || '')}</textarea>`;
+      html += '</div>';
+
       // Add item button
       html += `<button onclick="showAddOptionModal('${roomId}', '${slotId}')" class="w-full bg-warm-100 hover:bg-warm-200 text-warm-700 border-2 border-dashed border-warm-300 rounded-2xl p-4 text-sm font-medium transition mb-4">+ Add Item Option</button>`;
 
@@ -1115,6 +1141,14 @@
                 </div>
               </div>
             </div>
+            <div>
+              <label class="block text-xs font-medium text-warm-600 mb-1">Notes</label>
+              <textarea id="edit-slot-notes" rows="2" class="w-full border border-warm-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-warm-400 resize-none" placeholder="Any notes about this item...">${esc(slot.notes || '')}</textarea>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-warm-600 mb-1">Interior Design Tips</label>
+              <textarea id="edit-slot-tips" rows="2" class="w-full border border-warm-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-warm-400 resize-none" placeholder="Design tips for this item...">${esc(slot.designTips || '')}</textarea>
+            </div>
           </div>
           <div class="flex justify-end gap-2 mt-4">
             <button onclick="closeModal()" class="px-4 py-2 text-sm text-warm-600 hover:bg-warm-100 rounded-xl transition">Cancel</button>
@@ -1139,7 +1173,9 @@
           d: document.getElementById('edit-slot-d').value.trim(),
           h: document.getElementById('edit-slot-h').value.trim(),
           unit: document.getElementById('edit-slot-unit').value
-        }
+        },
+        notes: document.getElementById('edit-slot-notes').value.trim(),
+        designTips: document.getElementById('edit-slot-tips').value.trim()
       };
       if (multiSelect && slot && !slot.multiSelect && slot.selectedOptionId) {
         updates.selectedOptionIds = [slot.selectedOptionId];
