@@ -75,7 +75,7 @@
         const raw = localStorage.getItem(STORAGE_KEY);
         if (raw) return JSON.parse(raw);
       } catch (e) { /* ignore */ }
-      return { rooms: [] };
+      return { rooms: [], notes: '' };
     }
 
     function saveData(data) {
@@ -209,6 +209,12 @@
       if (!resp.ok) throw new Error('Create gist failed: ' + resp.status);
       const gist = await resp.json();
       return gist.id;
+    }
+
+    function updateGlobalNotes(value) {
+      const data = getData();
+      data.notes = value;
+      saveData(data);
     }
 
     // Room helpers
@@ -584,8 +590,28 @@
         html += '</div>';
       }
 
-      // Design reference PDF link
+      // Global notes section
+      const globalNotes = data.notes && data.notes.trim();
       html += '<div class="mt-8">';
+      if (globalNotes) {
+        html += '<div class="bg-white rounded-2xl border border-warm-200 p-5 mb-4">';
+        html += '<div class="flex items-center justify-between mb-2">';
+        html += '<h2 class="text-sm font-semibold text-warm-700 uppercase tracking-wider flex items-center gap-2"><span>&#9998;</span> Notes</h2>';
+        html += '<div class="flex gap-2">';
+        html += `<button onclick="showGlobalNotesEditor()" class="text-xs text-warm-500 hover:text-warm-700 transition">Edit</button>`;
+        html += `<button onclick="updateGlobalNotes(''); render()" class="text-xs text-warm-400 hover:text-red-500 transition">Remove</button>`;
+        html += '</div></div>';
+        html += `<p class="text-sm text-warm-700 whitespace-pre-wrap">${esc(data.notes)}</p>`;
+        html += '</div>';
+      }
+      html += `<div id="global-notes-editor" class="hidden mb-4"></div>`;
+      if (!globalNotes) {
+        html += `<button onclick="showGlobalNotesEditor()" class="text-xs text-warm-500 hover:text-warm-700 bg-warm-100 hover:bg-warm-200 px-3 py-1.5 rounded-lg transition mb-4">+ Add Notes</button>`;
+      }
+      html += '</div>';
+
+      // Design reference PDF link
+      html += '<div class="mt-4">';
       html += '<a href="https://drive.google.com/file/d/1s5I7Hdt5IvP7rLeET2vY3wGtdVcUdp9G/view?usp=sharing" target="_blank" rel="noopener" class="inline-flex items-center gap-2 bg-white border border-warm-200 rounded-2xl px-5 py-3 hover:shadow-md hover:border-warm-300 transition text-sm text-warm-700 hover:text-warm-900">';
       html += '<span class="text-lg">&#128196;</span>';
       html += '<span class="font-medium">Interior Design Reference PDF</span>';
@@ -654,7 +680,30 @@
       // Dimensions
       const dimStr = (dim.width && dim.length) ? `${dim.width} × ${dim.length}${dim.height ? ' × ' + dim.height : ''} ${dim.unit}` : '';
       if (dimStr) html += `<p class="text-sm text-warm-500 mt-1">${esc(dimStr)}</p>`;
-      if (room.notes) html += `<p class="text-sm text-warm-400 mt-2">${esc(room.notes)}</p>`;
+
+      // Add Notes button (only if no notes yet)
+      const hasRoomNotes = room.notes && room.notes.trim();
+      if (!hasRoomNotes) {
+        html += `<button onclick="showRoomNotesEditor('${room.id}')" class="text-xs text-warm-500 hover:text-warm-700 bg-warm-100 hover:bg-warm-200 px-3 py-1.5 rounded-lg transition mt-3">+ Add Notes</button>`;
+      }
+      html += '</div>';
+
+      // Inline editor slot
+      html += `<div id="room-notes-editor-${room.id}" class="hidden mt-3"></div>`;
+
+      // Room notes display
+      if (hasRoomNotes) {
+        html += '<div class="border-t border-warm-100 mt-4 pt-4">';
+        html += '<div class="flex items-center justify-between mb-1">';
+        html += '<h2 class="text-xs font-semibold text-warm-500 uppercase tracking-wider">Notes</h2>';
+        html += '<div class="flex gap-2">';
+        html += `<button onclick="showRoomNotesEditor('${room.id}')" class="text-xs text-warm-400 hover:text-warm-600 transition">Edit</button>`;
+        html += `<button onclick="updateRoom('${room.id}', { notes: '' }); render()" class="text-xs text-warm-400 hover:text-red-500 transition">Remove</button>`;
+        html += '</div></div>';
+        html += `<p class="text-sm text-warm-600 whitespace-pre-wrap">${esc(room.notes)}</p>`;
+        html += '</div>';
+      }
+
       html += '</div>';
 
       // Selected items gallery
@@ -1216,6 +1265,71 @@
       updateSlot(roomId, slotId, updates);
       closeModal();
       render();
+    }
+
+    function showRoomNotesEditor(roomId) {
+      const container = document.getElementById('room-notes-editor-' + roomId);
+      if (!container) return;
+      const room = getRoom(roomId);
+      if (!room) return;
+      container.className = 'mt-3 fade-in';
+      container.innerHTML = `
+        <div class="border-t border-warm-100 pt-4">
+          <h2 class="text-xs font-semibold text-warm-500 uppercase tracking-wider mb-2">Notes</h2>
+          <textarea id="room-notes-textarea" rows="3" placeholder="Add notes about this room... e.g. style direction, priorities, constraints" class="w-full border border-warm-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-warm-400 resize-none text-warm-700">${esc(room.notes || '')}</textarea>
+          <div class="flex justify-end gap-2 mt-2">
+            <button onclick="cancelRoomNotesEditor('${roomId}')" class="px-3 py-1.5 text-xs text-warm-600 hover:bg-warm-100 rounded-lg transition">Cancel</button>
+            <button onclick="saveRoomNotes('${roomId}')" class="px-3 py-1.5 text-xs bg-warm-800 text-white rounded-lg hover:bg-warm-700 transition">Save</button>
+          </div>
+        </div>
+      `;
+      setTimeout(() => {
+        const ta = document.getElementById('room-notes-textarea');
+        if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+      }, 50);
+    }
+
+    function saveRoomNotes(roomId) {
+      const ta = document.getElementById('room-notes-textarea');
+      if (!ta) return;
+      updateRoom(roomId, { notes: ta.value.trim() });
+      render();
+    }
+
+    function cancelRoomNotesEditor(roomId) {
+      const container = document.getElementById('room-notes-editor-' + roomId);
+      if (container) { container.className = 'hidden mt-3'; container.innerHTML = ''; }
+    }
+
+    function showGlobalNotesEditor() {
+      const container = document.getElementById('global-notes-editor');
+      if (!container) return;
+      const data = getData();
+      container.className = 'bg-white rounded-2xl border border-warm-200 p-5 mb-4 fade-in';
+      container.innerHTML = `
+        <h2 class="text-sm font-semibold text-warm-700 uppercase tracking-wider flex items-center gap-2 mb-2"><span>&#9998;</span> Notes</h2>
+        <textarea id="global-notes-textarea" rows="3" placeholder="Add overall project notes... e.g. budget, style vision, key decisions" class="w-full border border-warm-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-warm-400 resize-none text-warm-700">${esc(data.notes || '')}</textarea>
+        <div class="flex justify-end gap-2 mt-2">
+          <button onclick="cancelGlobalNotesEditor()" class="px-3 py-1.5 text-xs text-warm-600 hover:bg-warm-100 rounded-lg transition">Cancel</button>
+          <button onclick="saveGlobalNotes()" class="px-3 py-1.5 text-xs bg-warm-800 text-white rounded-lg hover:bg-warm-700 transition">Save</button>
+        </div>
+      `;
+      setTimeout(() => {
+        const ta = document.getElementById('global-notes-textarea');
+        if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+      }, 50);
+    }
+
+    function saveGlobalNotes() {
+      const ta = document.getElementById('global-notes-textarea');
+      if (!ta) return;
+      updateGlobalNotes(ta.value.trim());
+      render();
+    }
+
+    function cancelGlobalNotesEditor() {
+      const container = document.getElementById('global-notes-editor');
+      if (container) { container.className = 'hidden mb-4'; container.innerHTML = ''; }
     }
 
     function showSlotSectionEditor(roomId, slotId, type) {
